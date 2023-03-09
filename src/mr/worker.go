@@ -1,6 +1,13 @@
 package mr
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"sort"
+	"strconv"
+)
 import "log"
 import "net/rpc"
 import "hash/fnv"
@@ -12,6 +19,14 @@ type KeyValue struct {
 	Key   string
 	Value string
 }
+
+// for sorting by key.
+type ByKey []KeyValue
+
+// for sorting by key.
+func (a ByKey) Len() int           { return len(a) }
+func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 //
 // use ihash(key) % NReduce to choose the reduce
@@ -36,23 +51,75 @@ func Worker(mapf func(string, string) []KeyValue,
 
 }
 
-func doMapTask(jobName string, mapTask int, inFile string, nReduce int, mapf func(string, string) []KeyValue) {
-	// TODO: read input file
-	// TODO: pass file name and file content to mapf
-	// TODO: accumulate the intermediate Map output file
-	// TODO: shuffle intermediate to different files
-	// TODO: get current work id and intermediate item's key, this are X & Y in file name
-	// TODO: intermediate file format is json
-	// TODO: put intermediate file in current directory, naming mr-X-Y
+func doMapTask(jobName string, mapTask int, inFileName string, nReduce int, mapF func(string, string) []KeyValue) {
+	f, err := os.Open(inFileName)
+	if err != nil {
+		log.Fatalf("cannot open %v", inFileName)
+	}
+	content, err := ioutil.ReadAll(f)
+	if err != nil {
+		log.Fatalf("cannot read %v", inFileName)
+	}
+	f.Close()
+
+	kva := mapF(inFileName, string(content))
+	var intermediate []KeyValue
+	intermediate = append(intermediate, kva...)
+
+	fs := make([]*os.File, nReduce, nReduce)
+	encs := make([]*json.Encoder, nReduce, nReduce)
+	for i := 0; i < nReduce; i++ {
+		fs[i], _ = os.Create("mr-" + strconv.Itoa(mapTask) + "-" + strconv.Itoa(i))
+		encs[i] = json.NewEncoder(fs[i])
+	}
+
+	for _, kv := range intermediate {
+		i := ihash(kv.Key) % nReduce
+		encs[i].Encode(&kv)
+	}
 }
 
-func doReduceTask() {
-	// TODO: get all intermediate files which file name's Y is reduce task id
-	// TODO: nReduce reduce tasks total
-	// TODO: unmarshall json content to slice
-	// TODO: collect all content from all files
-	// TODO: sort json slice
-	// TODO: marshall json slice to file, naming mr-out-{reduce task id}
+func doReduceTask(jobName string, reduceTask int, outFileName string, nMap int, reduceF func(key string, values []string) string) {
+	var kva []KeyValue
+
+	for i := 0; i < nMap; i++ {
+		f, err := os.Open("mr-" + strconv.Itoa(i) + "-" + strconv.Itoa(reduceTask))
+		if err != nil {
+			log.Fatalf("cannot open %v", f)
+		}
+
+		dec := json.NewDecoder(f)
+		for {
+			var kv KeyValue
+			if err := dec.Decode(&kv); err != nil {
+				break
+			}
+			kva = append(kva, kv)
+		}
+
+		f.Close()
+	}
+
+	sort.Sort(ByKey(kva))
+	outFile, _ := os.Create(outFileName)
+
+	i := 0
+	for i < len(kva) {
+		j := i + 1
+		for j < len(kva) && kva[j].Key == kva[i].Key {
+			j++
+		}
+		var values []string
+		for k := i; k < j; k++ {
+			values = append(values, kva[k].Value)
+		}
+		output := reduceF(kva[i].Key, values)
+
+		fmt.Fprintf(outFile, "%v %v\n", kva[i].Key, output)
+
+		i = j
+	}
+
 }
 
 //

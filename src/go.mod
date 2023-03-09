@@ -1,3 +1,7 @@
-module 6.824
+module github.com/uperbilite/MIT-6.824
 
 go 1.15
+
+require (
+	github.com/stretchr/testify v1.8.2
+)

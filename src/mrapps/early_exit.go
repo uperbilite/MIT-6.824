@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"6.824/mr"
+	"github.com/uperbilite/MIT-6.824/mr"
 )
 
 //

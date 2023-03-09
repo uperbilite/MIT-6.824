@@ -5,7 +5,7 @@ package main
 //
 
 import "time"
-import "6.824/viewservice"
+import "github.com/uperbilite/MIT-6.824/viewservice"
 import "os"
 import "fmt"
 

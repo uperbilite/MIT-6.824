@@ -7,7 +7,7 @@ package main
 // go build -buildmode=plugin rtiming.go
 //
 
-import "6.824/mr"
+import "github.com/uperbilite/MIT-6.824/mr"
 import "fmt"
 import "os"
 import "syscall"

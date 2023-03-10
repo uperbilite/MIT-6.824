@@ -84,34 +84,42 @@ func (c *Coordinator) forwardRegistrations(ch chan string) {
 	}
 }
 
+func (c *Coordinator) getMapTask(reply *TaskReply) {
+	for i, t := range c.tasks {
+		if t.state == Idle {
+			reply.Id = t.id
+			reply.Type = Map
+			reply.Filename = t.filename
+			reply.OtherNum = c.nReduce
+			c.tasks[i].state = InProgress
+			return
+		}
+	}
+	// TODO: reply Wait logic
+}
+
+func (c *Coordinator) getReduceTask(reply *TaskReply) {
+	for i, t := range c.tasks {
+		if t.state == Idle {
+			reply.Id = t.id
+			reply.Type = Reduce
+			reply.Filename = t.filename
+			reply.OtherNum = c.nMap
+			c.tasks[i].state = InProgress
+			break
+		}
+	}
+	// TODO: reply Wait logic
+}
+
 func (c *Coordinator) GetTask(_ *struct{}, reply *TaskReply) error {
 	c.Lock()
 	defer c.Unlock()
 	switch c.phase {
 	case Map:
-		for i, t := range c.tasks {
-			if t.state == Idle {
-				reply.Id = t.id
-				reply.Type = Map
-				reply.Filename = t.filename
-				reply.OtherNum = c.nReduce
-				c.tasks[i].state = InProgress
-				break
-			}
-		}
+		c.getMapTask(reply)
 	case Reduce:
-		for i, t := range c.tasks {
-			if t.state == Idle {
-				reply.Id = t.id
-				reply.Type = Reduce
-				reply.Filename = t.filename
-				reply.OtherNum = c.nMap
-				c.tasks[i].state = InProgress
-				break
-			}
-		}
-	case Wait:
-		reply = &TaskReply{Type: Wait}
+		c.getReduceTask(reply)
 	case Exit:
 		reply = &TaskReply{Type: Exit}
 	}

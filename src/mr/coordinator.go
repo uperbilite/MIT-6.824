@@ -2,40 +2,49 @@ package mr
 
 import (
 	"log"
+	"net"
+	"net/http"
+	"net/rpc"
+	"os"
 	"sync"
 )
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
+
+// State for Coordinator and Task
+type State int
+
+const (
+	Map State = iota
+	Reduce
+	Exit
+	Wait
+)
 
 type Coordinator struct {
 	sync.Mutex
 
-	address string
-	done    chan bool
+	state State
 
-	nMap    int
-	nReduce int
-	files   []string
+	nMap         int
+	nReduce      int
+	processedNum int
+	files        []string
 
 	// protected by the mutex
 	newCond *sync.Cond // signals when Register() adds to workers[]
 	workers []string   // each worker's UNIX-domain socket name -- its RPC address
+
+	done chan bool
 }
-
-type TaskStatus int
-
-const (
-	IDLE TaskStatus = iota
-	MAPPHASE
-	REDUCEPHASE
-)
 
 type Task struct {
 	id       int
 	filename string
-	status   TaskStatus
+	state    State
+	tasksNum int
+	// otherNum is the total number of tasks in other phase; mappers
+	// need this to compute the number of output bins, and reducers
+	// needs this to know how many input files to collect.
+	otherNum int
 }
 
 func (c *Coordinator) Register(args *RegisterArgs, _ *struct{}) error {
@@ -49,7 +58,35 @@ func (c *Coordinator) Register(args *RegisterArgs, _ *struct{}) error {
 	return nil
 }
 
+// forwardRegistrations sends information about all existing
+// and newly registered workers to channel ch. schedule()
+// reads ch to learn about workers.
+func (c *Coordinator) forwardRegistrations(ch chan string) {
+	i := 0
+	for {
+		c.Lock()
+		if len(c.workers) > i {
+			// there's a worker that we haven't told schedule() about.
+			w := c.workers[i]
+			go func() { ch <- w }() // send without holding the lock.
+			i = i + 1
+		} else {
+			// wait for Register() to add an entry to workers[]
+			// in response to an RPC from a new worker.
+			c.newCond.Wait()
+		}
+		c.Unlock()
+	}
+}
+
 func (c *Coordinator) GetMapTask(args *GetMapTaskArgs, reply *GetMapTaskReply) error {
+	if c.processedNum == c.nMap {
+		return nil
+	}
+	reply.Filename = c.files[c.processedNum]
+	reply.TaskNum = c.processedNum
+	reply.NReduce = c.nReduce
+	c.processedNum += 1
 	return nil
 }
 
@@ -107,7 +144,12 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c.files = files
 	c.nMap = len(files)
 	c.nReduce = nReduce
+	c.processedNum = 0
+
+	c.newCond = sync.NewCond(&c)
+	c.done = make(chan bool)
 
 	c.server()
+
 	return &c
 }

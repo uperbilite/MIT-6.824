@@ -95,7 +95,8 @@ func (c *Coordinator) getMapTask(reply *TaskReply) {
 			return
 		}
 	}
-	// TODO: reply Wait logic
+	// no map task is idle
+	reply.Type = Wait
 }
 
 func (c *Coordinator) getReduceTask(reply *TaskReply) {
@@ -109,7 +110,8 @@ func (c *Coordinator) getReduceTask(reply *TaskReply) {
 			break
 		}
 	}
-	// TODO: reply Wait logic
+	// no reduce task is idle
+	reply.Type = Wait
 }
 
 func (c *Coordinator) GetTask(_ *struct{}, reply *TaskReply) error {
@@ -121,7 +123,7 @@ func (c *Coordinator) GetTask(_ *struct{}, reply *TaskReply) error {
 	case Reduce:
 		c.getReduceTask(reply)
 	case Exit:
-		reply = &TaskReply{Type: Exit}
+		reply.Type = Exit
 	}
 	return nil
 }

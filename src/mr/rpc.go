@@ -27,13 +27,34 @@ type RegisterArgs struct {
 	Worker string // the worker's UNIX-domain socket name, i.e. its RPC address
 }
 
-type TaskReply struct {
+type TaskState int
+
+const (
+	Idle TaskState = iota
+	InProgress
+	Completed
+)
+
+type TaskType int
+
+const (
+	Map TaskType = iota
+	Reduce
+	Exit
+	Wait
+)
+
+type Task struct {
 	// Id is the number indicates worker to create and read
 	// intermediate files. mappers create mr-{TasksNum}-Y files,
 	// reducers read mr-X-{TasksNum} files. While both X and Y is
 	// from 0 to OtherNum.
 	Id int
 
+	// State is the state of task.
+	State TaskState
+
+	// Type is the type of task.
 	Type TaskType
 
 	// Filename of Map type Task is the input file name, of

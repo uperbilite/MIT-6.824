@@ -10,20 +10,18 @@ import (
 	"sync"
 )
 
-// TaskType for Coordinator and Task
-type TaskType int
+type Phase int
 
 const (
-	Map TaskType = iota
-	Reduce
-	Exit
-	Wait
+	MapPhase Phase = iota
+	ReducePhase
+	ExitPhase
 )
 
 type Coordinator struct {
 	sync.Mutex
 
-	phase TaskType
+	phase Phase
 
 	nMap    int
 	nReduce int
@@ -36,20 +34,6 @@ type Coordinator struct {
 	workers []string   // each worker's UNIX-domain socket name -- its RPC address
 
 	done chan bool
-}
-
-type TaskState int
-
-const (
-	Idle TaskState = iota
-	InProgress
-	Completed
-)
-
-type Task struct {
-	id       int
-	state    TaskState
-	filename string
 }
 
 func (c *Coordinator) Register(args *RegisterArgs, _ *struct{}) error {
@@ -84,46 +68,28 @@ func (c *Coordinator) forwardRegistrations(ch chan string) {
 	}
 }
 
-func (c *Coordinator) getMapTask(reply *TaskReply) {
+func (c *Coordinator) getIdleTask(task *Task) {
 	for i, t := range c.tasks {
-		if t.state == Idle {
-			reply.Id = t.id
-			reply.Type = Map
-			reply.Filename = t.filename
-			reply.OtherNum = c.nReduce
-			c.tasks[i].state = InProgress
+		if t.State == Idle {
+			c.tasks[i].State = InProgress
+			task = &c.tasks[i]
 			return
 		}
 	}
-	// no map task is idle
-	reply.Type = Wait
-}
-
-func (c *Coordinator) getReduceTask(reply *TaskReply) {
-	for i, t := range c.tasks {
-		if t.state == Idle {
-			reply.Id = t.id
-			reply.Type = Reduce
-			reply.Filename = t.filename
-			reply.OtherNum = c.nMap
-			c.tasks[i].state = InProgress
-			break
-		}
-	}
 	// no reduce task is idle
-	reply.Type = Wait
+	task.Type = Wait
 }
 
-func (c *Coordinator) GetTask(_ *struct{}, reply *TaskReply) error {
+func (c *Coordinator) GetTask(_ *struct{}, task *Task) error {
 	c.Lock()
 	defer c.Unlock()
 	switch c.phase {
-	case Map:
-		c.getMapTask(reply)
-	case Reduce:
-		c.getReduceTask(reply)
-	case Exit:
-		reply.Type = Exit
+	case MapPhase:
+		c.getIdleTask(task)
+	case ReducePhase:
+		c.getIdleTask(task)
+	case ExitPhase:
+		task.Type = Exit
 	}
 	return nil
 }
@@ -133,9 +99,11 @@ func (c *Coordinator) setMapTasks() {
 	// each input files has a map task.
 	for i, f := range c.files {
 		t := Task{
-			id:       i,
-			state:    Idle,
-			filename: f,
+			Id:       i,
+			State:    Idle,
+			Type:     Map,
+			Filename: f,
+			OtherNum: c.nReduce,
 		}
 		c.tasks = append(c.tasks, t)
 	}
@@ -146,9 +114,11 @@ func (c *Coordinator) setReduceTasks() {
 	// nReduce tasks in reduce phase.
 	for i := 0; i < c.nReduce; i++ {
 		t := Task{
-			id:       i,
-			state:    Idle,
-			filename: reduceOutputName(i),
+			Id:       i,
+			State:    Idle,
+			Type:     Reduce,
+			Filename: reduceOutputName(i),
+			OtherNum: c.nMap,
 		}
 		c.tasks = append(c.tasks, t)
 	}
@@ -158,10 +128,10 @@ func reduceOutputName(id int) string {
 	return "mr-out-" + strconv.Itoa(id)
 }
 
-func (c *Coordinator) TaskComplete(task *TaskReply, _ *struct{}) error {
+func (c *Coordinator) TaskComplete(task *Task, _ *struct{}) error {
 	c.Lock()
 	defer c.Unlock()
-	c.tasks[task.Id].state = Completed
+	c.tasks[task.Id].State = Completed
 	return nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 )
 
 type Phase int
@@ -19,58 +20,61 @@ const (
 )
 
 type Coordinator struct {
-	sync.Mutex
-
-	phase Phase
-
+	sync.RWMutex
+	phase   Phase
 	nMap    int
 	nReduce int
 	files   []string
-
-	tasks []Task
+	tasks   []Task
 }
 
-func (c *Coordinator) getIdleTask(phase Phase, task *Task) {
-	for i, t := range c.tasks {
+func (c *Coordinator) getIdleTask(task *Task) {
+	c.RLock()
+	defer c.RUnlock()
+
+	for _, t := range c.tasks {
 		if t.State == Idle {
 			task.Id = t.Id
-
-			// workers don't need task state, while coordinator need.
-			c.tasks[i].State = InProgress
-
-			if phase == MapPhase {
-				task.Type = Map
-			} else if phase == ReducePhase {
-				task.Type = Reduce
-			}
-
+			task.Type = t.Type
 			task.Filename = t.Filename
 			task.OtherNum = t.OtherNum
-
 			return
 		}
 	}
-	// no reduce task is idle
+	// no idle task
 	task.Type = Wait
 }
 
 func (c *Coordinator) GetTask(_ *struct{}, task *Task) error {
-	c.Lock()
-	defer c.Unlock()
+	c.RLock()
+	phase := c.phase
+	c.RUnlock()
 
-	switch c.phase {
+	switch phase {
 	case MapPhase:
-		c.getIdleTask(MapPhase, task)
+		c.getIdleTask(task)
 	case ReducePhase:
-		c.getIdleTask(ReducePhase, task)
+		c.getIdleTask(task)
 	case ExitPhase:
 		task.Type = Exit
+	}
+
+	// workers don't need task state, while coordinator need.
+	if task.Type != Wait {
+		c.Lock()
+		c.tasks[task.Id].State = InProgress
+		c.Unlock()
 	}
 
 	return nil
 }
 
+// setMapTasks before map phase.
 func (c *Coordinator) setMapTasks() {
+	c.Lock()
+	defer c.Unlock()
+
+	c.phase = MapPhase
 	c.tasks = c.tasks[0:0]
 	// each input files has a map task.
 	for i, f := range c.files {
@@ -85,7 +89,12 @@ func (c *Coordinator) setMapTasks() {
 	}
 }
 
+// setReduceTasks before reduce phase
 func (c *Coordinator) setReduceTasks() {
+	c.Lock()
+	defer c.Unlock()
+
+	c.phase = ReducePhase
 	c.tasks = c.tasks[0:0]
 	// nReduce tasks in reduce phase.
 	for i := 0; i < c.nReduce; i++ {
@@ -100,6 +109,12 @@ func (c *Coordinator) setReduceTasks() {
 	}
 }
 
+func (c *Coordinator) setExitTasks() {
+	c.Lock()
+	defer c.Unlock()
+	c.phase = ExitPhase
+}
+
 func reduceOutputName(id int) string {
 	return "mr-out-" + strconv.Itoa(id)
 }
@@ -111,8 +126,11 @@ func (c *Coordinator) TaskCompleted(task *Task, _ *struct{}) error {
 	return nil
 }
 
-func isAllComplete(tasks []Task) bool {
-	for _, t := range tasks {
+func (c *Coordinator) isAllComplete() bool {
+	c.RLock()
+	defer c.RUnlock()
+
+	for _, t := range c.tasks {
 		if t.State != Completed {
 			return false
 		}
@@ -121,23 +139,27 @@ func isAllComplete(tasks []Task) bool {
 }
 
 func (c *Coordinator) Phase() {
+	c.setMapTasks()
+
 	for {
-		c.Lock()
-		switch c.phase {
+		c.RLock()
+		phase := c.phase
+		c.RUnlock()
+
+		switch phase {
 		case MapPhase:
-			if isAllComplete(c.tasks) {
-				c.phase = ReducePhase
+			if c.isAllComplete() {
 				c.setReduceTasks()
 			}
 		case ReducePhase:
-			if isAllComplete(c.tasks) {
-				c.phase = ExitPhase
+			if c.isAllComplete() {
+				c.setExitTasks()
 			}
 		case ExitPhase:
-			c.Unlock()
 			return
 		}
-		c.Unlock()
+
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -162,6 +184,8 @@ func (c *Coordinator) server() {
 // if the entire job has finished.
 //
 func (c *Coordinator) Done() bool {
+	c.RLock()
+	defer c.RUnlock()
 	if c.phase == ExitPhase {
 		return true
 	}
@@ -175,13 +199,10 @@ func (c *Coordinator) Done() bool {
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{
-		phase:   MapPhase,
 		nMap:    len(files),
 		nReduce: nReduce,
 		files:   files,
 	}
-
-	c.setMapTasks()
 
 	c.server()
 	go c.Phase()

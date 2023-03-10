@@ -44,13 +44,14 @@ func ihash(key string) int {
 func Worker(mapF func(string, string) []KeyValue, reduceF func(string, []string) string) {
 	for {
 		task := getTask()
+		// log.Printf("Worker: receive coordinator's task %v \n", task)
 		switch task.Type {
 		case Map:
 			doMapTask(task, mapF)
 		case Reduce:
 			doReduceTask(task, reduceF)
 		case Wait:
-			time.Sleep(5 * time.Second)
+			time.Sleep(1 * time.Second)
 		case Exit:
 			return
 		}
@@ -132,9 +133,8 @@ func doReduceTask(task Task, reduceF func(key string, values []string) string) {
 		for k := i; k < j; k++ {
 			values = append(values, kva[k].Value)
 		}
-		output := reduceF(kva[i].Key, values)
 
-		fmt.Fprintf(outFile, "%v %v\n", kva[i].Key, output)
+		fmt.Fprintf(outFile, "%v %v\n", kva[i].Key, reduceF(kva[i].Key, values))
 
 		i = j
 	}

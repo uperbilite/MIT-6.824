@@ -32,7 +32,8 @@ type TaskReply struct {
 	// intermediate files. mappers create mr-{TasksNum}-Y files,
 	// reducers read mr-X-{TasksNum} files. While both X and Y is
 	// from 0 to OtherNum.
-	Id   int
+	Id int
+
 	Type TaskType
 
 	// Filename of Map type Task is the input file name, of

@@ -89,28 +89,24 @@ func (c *Coordinator) GetTask(_ *struct{}, reply *TaskReply) error {
 	defer c.Unlock()
 	switch c.phase {
 	case Map:
-		for _, t := range c.tasks {
+		for i, t := range c.tasks {
 			if t.state == Idle {
-				reply = &TaskReply{
-					Id:       t.id,
-					Type:     Map,
-					Filename: t.filename,
-					OtherNum: c.nReduce,
-				}
-				t.state = InProgress
+				reply.Id = t.id
+				reply.Type = Map
+				reply.Filename = t.filename
+				reply.OtherNum = c.nReduce
+				c.tasks[i].state = InProgress
 				break
 			}
 		}
 	case Reduce:
-		for _, t := range c.tasks {
+		for i, t := range c.tasks {
 			if t.state == Idle {
-				reply = &TaskReply{
-					Id:       t.id,
-					Type:     Reduce,
-					Filename: t.filename,
-					OtherNum: c.nMap,
-				}
-				t.state = InProgress
+				reply.Id = t.id
+				reply.Type = Reduce
+				reply.Filename = t.filename
+				reply.OtherNum = c.nMap
+				c.tasks[i].state = InProgress
 				break
 			}
 		}
@@ -205,6 +201,8 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 
 	c.newCond = sync.NewCond(&c)
 	c.done = make(chan bool)
+
+	c.setMapTasks()
 
 	c.server()
 

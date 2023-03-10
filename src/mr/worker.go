@@ -3,7 +3,6 @@ package mr
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sort"
 	"strconv"
@@ -69,7 +68,7 @@ func doMapTask(task TaskReply, mapF func(string, string) []KeyValue) {
 	inFileName := task.Filename
 	nReduce := task.OtherNum
 
-	content, err := ioutil.ReadFile(inFileName)
+	content, err := os.ReadFile(inFileName)
 	if err != nil {
 		log.Fatalf("cannot read %v", inFileName)
 	}

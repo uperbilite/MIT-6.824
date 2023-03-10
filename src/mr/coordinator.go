@@ -95,6 +95,7 @@ func (c *Coordinator) getIdleTask(phase Phase, task *Task) {
 func (c *Coordinator) GetTask(_ *struct{}, task *Task) error {
 	c.Lock()
 	defer c.Unlock()
+
 	switch c.phase {
 	case MapPhase:
 		c.getIdleTask(MapPhase, task)
@@ -103,6 +104,7 @@ func (c *Coordinator) GetTask(_ *struct{}, task *Task) error {
 	case ExitPhase:
 		task.Type = Exit
 	}
+
 	return nil
 }
 
@@ -147,10 +149,35 @@ func (c *Coordinator) TaskCompleted(task *Task, _ *struct{}) error {
 	return nil
 }
 
+func isAllComplete(tasks []Task) bool {
+	for _, t := range tasks {
+		if t.State != Completed {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *Coordinator) Phase() {
 	// TODO: monitor task state
 	// TODO: if all task is complete, step into next phase
 	// TODO: Map -> Reduce, Reduce -> Exit
+	for {
+		c.Lock()
+		switch c.phase {
+		case MapPhase:
+			if isAllComplete(c.tasks) {
+				c.phase = ReducePhase
+			}
+		case ReducePhase:
+			log.Fatalf("reduce phase complete")
+		case ExitPhase:
+			c.Unlock()
+			return
+		}
+		c.Unlock()
+
+	}
 }
 
 //
@@ -197,12 +224,12 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{}
-
-	// Your code here.
-	c.files = files
-	c.nMap = len(files)
-	c.nReduce = nReduce
+	c := Coordinator{
+		phase:   MapPhase,
+		nMap:    len(files),
+		nReduce: nReduce,
+		files:   files,
+	}
 
 	c.newCond = sync.NewCond(&c)
 	c.done = make(chan bool)
@@ -210,6 +237,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c.setMapTasks()
 
 	c.server()
+	go c.Phase()
 
 	return &c
 }

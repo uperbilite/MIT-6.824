@@ -63,8 +63,8 @@ func getTask() Task {
 	return task
 }
 
-func taskCompleted(task *Task, _ *struct{}) {
-
+func taskCompleted(task Task) {
+	call("Coordinator.TaskCompleted", &task, new(struct{}))
 }
 
 func doMapTask(task Task, mapF func(string, string) []KeyValue) {
@@ -90,6 +90,8 @@ func doMapTask(task Task, mapF func(string, string) []KeyValue) {
 		i := ihash(kv.Key) % nReduce
 		encs[i].Encode(&kv)
 	}
+
+	taskCompleted(task)
 }
 
 func doReduceTask(task Task, reduceF func(key string, values []string) string) {
@@ -137,6 +139,7 @@ func doReduceTask(task Task, reduceF func(key string, values []string) string) {
 		i = j
 	}
 
+	taskCompleted(task)
 }
 
 //

@@ -28,10 +28,18 @@ type RegisterArgs struct {
 }
 
 type GetTaskReply struct {
-	Id       int
+	Id   int
+	Type TaskType
+
+	// Filename of Task in Map phase is the input file name, in
+	// Reduce phase is the output file name.
 	Filename string
-	State    State
+
 	TasksNum int
+
+	// otherNum is the total number of tasks in other phase; mappers
+	// need this to compute the number of output bins, and reducers
+	// needs this to know how many input files to collect.
 	OtherNum int
 }
 

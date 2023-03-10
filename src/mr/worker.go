@@ -42,16 +42,14 @@ func ihash(key string) int {
 //
 // main/mrworker.go calls this function.
 //
-func Worker(mapf func(string, string) []KeyValue,
-	reducef func(string, []string) string) {
-
+func Worker(mapF func(string, string) []KeyValue, reduceF func(string, []string) string) {
 	for {
 		task := getTask()
-		switch task.State {
+		switch task.Type {
 		case Map:
-			doMapTask(task, mapf)
+			doMapTask(task, mapF)
 		case Reduce:
-			doReduceTask(task, reducef)
+			doReduceTask(task, reduceF)
 		case Wait:
 			time.Sleep(5 * time.Second)
 		case Exit:

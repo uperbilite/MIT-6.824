@@ -9,11 +9,11 @@ import (
 	"sync"
 )
 
-// State for Coordinator and Task
-type State int
+// TaskType for Coordinator and Task
+type TaskType int
 
 const (
-	Map State = iota
+	Map TaskType = iota
 	Reduce
 	Exit
 	Wait
@@ -22,12 +22,13 @@ const (
 type Coordinator struct {
 	sync.Mutex
 
-	state State
+	phase TaskType
 
-	nMap         int
-	nReduce      int
-	processedNum int
-	files        []string
+	nMap    int
+	nReduce int
+	files   []string
+
+	tasks []Task
 
 	// protected by the mutex
 	newCond *sync.Cond // signals when Register() adds to workers[]
@@ -36,15 +37,18 @@ type Coordinator struct {
 	done chan bool
 }
 
+type TaskState int
+
+const (
+	Idle TaskState = iota
+	InProgress
+	Completed
+)
+
 type Task struct {
 	id       int
+	state    TaskState
 	filename string
-	state    State
-	tasksNum int
-	// otherNum is the total number of tasks in other phase; mappers
-	// need this to compute the number of output bins, and reducers
-	// needs this to know how many input files to collect.
-	otherNum int
 }
 
 func (c *Coordinator) Register(args *RegisterArgs, _ *struct{}) error {
@@ -79,14 +83,11 @@ func (c *Coordinator) forwardRegistrations(ch chan string) {
 	}
 }
 
+func (c *Coordinator) GetTask(_ *struct{}, reply *GetTaskReply) error {
+	return nil
+}
+
 func (c *Coordinator) GetMapTask(_ *struct{}, reply *GetTaskReply) error {
-	if c.processedNum == c.nMap {
-		return nil
-	}
-	reply.Filename = c.files[c.processedNum]
-	reply.TasksNum = c.processedNum
-	reply.OtherNum = c.nReduce
-	c.processedNum += 1
 	return nil
 }
 
@@ -140,7 +141,6 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c.files = files
 	c.nMap = len(files)
 	c.nReduce = nReduce
-	c.processedNum = 0
 
 	c.newCond = sync.NewCond(&c)
 	c.done = make(chan bool)

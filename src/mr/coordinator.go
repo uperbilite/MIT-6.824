@@ -159,24 +159,23 @@ func isAllComplete(tasks []Task) bool {
 }
 
 func (c *Coordinator) Phase() {
-	// TODO: monitor task state
-	// TODO: if all task is complete, step into next phase
-	// TODO: Map -> Reduce, Reduce -> Exit
 	for {
 		c.Lock()
 		switch c.phase {
 		case MapPhase:
 			if isAllComplete(c.tasks) {
 				c.phase = ReducePhase
+				c.setReduceTasks()
 			}
 		case ReducePhase:
-			log.Fatalf("reduce phase complete")
+			if isAllComplete(c.tasks) {
+				c.phase = ExitPhase
+			}
 		case ExitPhase:
 			c.Unlock()
 			return
 		}
 		c.Unlock()
-
 	}
 }
 
@@ -211,11 +210,10 @@ func (c *Coordinator) server() {
 // if the entire job has finished.
 //
 func (c *Coordinator) Done() bool {
-	ret := false
-
-	// Your code here.
-
-	return ret
+	if c.phase == ExitPhase {
+		return true
+	}
+	return false
 }
 
 //

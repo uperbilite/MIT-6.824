@@ -1,23 +1,60 @@
 package mr
 
-import "log"
+import (
+	"log"
+	"sync"
+)
 import "net"
 import "os"
 import "net/rpc"
 import "net/http"
 
 type Coordinator struct {
-	// Your definitions here.
+	sync.Mutex
 
+	address string
+	done    chan bool
+
+	nMap    int
+	nReduce int
+	files   []string
+
+	// protected by the mutex
+	newCond *sync.Cond // signals when Register() adds to workers[]
+	workers []string   // each worker's UNIX-domain socket name -- its RPC address
 }
 
-// Your code here -- RPC handlers for the worker to call.
-func (c *Coordinator) GetMapTask(args *GetMapTaskArgs, reply *GetMapTaskReply) {
+type TaskStatus int
 
+const (
+	IDLE TaskStatus = iota
+	MAPPHASE
+	REDUCEPHASE
+)
+
+type Task struct {
+	id       int
+	filename string
+	status   TaskStatus
 }
 
-func (c *Coordinator) GetReduceTask(args *GetReduceTaskArgs, reply *GetReduceTaskReply) {
+func (c *Coordinator) Register(args *RegisterArgs, _ *struct{}) error {
+	c.Lock()
+	defer c.Unlock()
+	c.workers = append(c.workers, args.Worker)
 
+	// tell forwardRegistrations() that there's a new workers[] entry.
+	c.newCond.Broadcast()
+
+	return nil
+}
+
+func (c *Coordinator) GetMapTask(args *GetMapTaskArgs, reply *GetMapTaskReply) error {
+	return nil
+}
+
+func (c *Coordinator) GetReduceTask(args *GetReduceTaskArgs, reply *GetReduceTaskReply) error {
+	return nil
 }
 
 //
@@ -67,8 +104,9 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
 
 	// Your code here.
-	// TODO: create len(files) map worker
-	// TODO: create nReduce reduce worker
+	c.files = files
+	c.nMap = len(files)
+	c.nReduce = nReduce
 
 	c.server()
 	return &c

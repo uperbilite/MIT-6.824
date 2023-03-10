@@ -22,7 +22,11 @@ type ExampleReply struct {
 	Y int
 }
 
-// Add your RPC definitions here.
+// RegisterArgs is the argument passed when a worker registers with the master.
+type RegisterArgs struct {
+	Worker string // the worker's UNIX-domain socket name, i.e. its RPC address
+}
+
 type GetMapTaskArgs struct {
 }
 

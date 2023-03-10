@@ -68,11 +68,23 @@ func (c *Coordinator) forwardRegistrations(ch chan string) {
 	}
 }
 
-func (c *Coordinator) getIdleTask(task *Task) {
+func (c *Coordinator) getIdleTask(phase Phase, task *Task) {
 	for i, t := range c.tasks {
 		if t.State == Idle {
+			task.Id = t.Id
+
+			// workers don't need task state, while coordinator need.
 			c.tasks[i].State = InProgress
-			task = &c.tasks[i]
+
+			if phase == MapPhase {
+				task.Type = Map
+			} else if phase == ReducePhase {
+				task.Type = Reduce
+			}
+
+			task.Filename = t.Filename
+			task.OtherNum = t.OtherNum
+
 			return
 		}
 	}
@@ -85,9 +97,9 @@ func (c *Coordinator) GetTask(_ *struct{}, task *Task) error {
 	defer c.Unlock()
 	switch c.phase {
 	case MapPhase:
-		c.getIdleTask(task)
+		c.getIdleTask(MapPhase, task)
 	case ReducePhase:
-		c.getIdleTask(task)
+		c.getIdleTask(ReducePhase, task)
 	case ExitPhase:
 		task.Type = Exit
 	}
@@ -128,7 +140,7 @@ func reduceOutputName(id int) string {
 	return "mr-out-" + strconv.Itoa(id)
 }
 
-func (c *Coordinator) TaskComplete(task *Task, _ *struct{}) error {
+func (c *Coordinator) TaskCompleted(task *Task, _ *struct{}) error {
 	c.Lock()
 	defer c.Unlock()
 	c.tasks[task.Id].State = Completed

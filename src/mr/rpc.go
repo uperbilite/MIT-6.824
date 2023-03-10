@@ -6,7 +6,10 @@ package mr
 // remember to capitalize all names.
 //
 
-import "os"
+import (
+	"os"
+	"time"
+)
 import "strconv"
 
 type TaskState int
@@ -47,6 +50,9 @@ type Task struct {
 	// need this to compute the number of output bins, and reducers
 	// needs this to know how many input files to collect.
 	OtherNum int
+
+	// StartTime is to prevent worker crash.
+	StartTime time.Time
 }
 
 // Cook up a unique-ish UNIX-domain socket name

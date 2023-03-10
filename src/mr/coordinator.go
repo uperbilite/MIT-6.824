@@ -138,7 +138,7 @@ func (c *Coordinator) isAllComplete() bool {
 	return true
 }
 
-func (c *Coordinator) Phase() {
+func (c *Coordinator) SchedulePhase() {
 	c.setMapTasks()
 
 	for {
@@ -160,6 +160,31 @@ func (c *Coordinator) Phase() {
 		}
 
 		time.Sleep(1 * time.Second)
+	}
+}
+
+func (c *Coordinator) CatchCrash() {
+	for {
+		time.Sleep(20 * time.Second)
+
+		c.RLock()
+		phase := c.phase
+		c.RUnlock()
+
+		if phase == ExitPhase {
+			return
+		}
+
+		for _, t := range c.tasks {
+			c.RLock()
+			isCrash := t.State == InProgress && time.Now().Sub(t.StartTime) > 20*time.Second
+			c.RUnlock()
+			if isCrash {
+				c.Lock()
+				c.tasks[t.Id].State = Idle
+				c.Unlock()
+			}
+		}
 	}
 }
 
@@ -205,7 +230,9 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	}
 
 	c.server()
-	go c.Phase()
+
+	go c.SchedulePhase()
+	go c.CatchCrash()
 
 	return &c
 }

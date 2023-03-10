@@ -28,18 +28,16 @@ type RegisterArgs struct {
 }
 
 type TaskReply struct {
-	Id   int
-	Type TaskType
-
-	// Filename of Map type Task is the input file name, in
-	// Reduce type is the output file name.
-	Filename string
-
-	// TasksNum is the number indicates worker to create and read
+	// Id is the number indicates worker to create and read
 	// intermediate files. mappers create mr-{TasksNum}-Y files,
 	// reducers read mr-X-{TasksNum} files. While both X and Y is
 	// from 0 to OtherNum.
-	TasksNum int
+	Id   int
+	Type TaskType
+
+	// Filename of Map type Task is the input file name, of
+	// Reduce type is the output file name.
+	Filename string
 
 	// OtherNum is the total number of tasks in other phase; mappers
 	// need this to compute the number of output bins, and reducers

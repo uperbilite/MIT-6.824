@@ -65,7 +65,7 @@ func getTask() TaskReply {
 }
 
 func doMapTask(task TaskReply, mapF func(string, string) []KeyValue) {
-	mapTask := task.TasksNum
+	mapTask := task.Id
 	inFileName := task.Filename
 	nReduce := task.OtherNum
 
@@ -90,7 +90,7 @@ func doMapTask(task TaskReply, mapF func(string, string) []KeyValue) {
 }
 
 func doReduceTask(task TaskReply, reduceF func(key string, values []string) string) {
-	reduceTask := task.TasksNum
+	reduceTask := task.Id
 	outFileName := task.Filename
 	nMap := task.OtherNum
 

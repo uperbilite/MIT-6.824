@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"strconv"
 	"sync"
 )
 
@@ -93,8 +94,7 @@ func (c *Coordinator) GetTask(_ *struct{}, reply *TaskReply) error {
 				reply = &TaskReply{
 					Id:       t.id,
 					Type:     Map,
-					Filename: mapName(),
-					TasksNum: t.id, // TODO: get TasksNum
+					Filename: t.filename,
 					OtherNum: c.nReduce,
 				}
 				t.state = InProgress
@@ -107,8 +107,7 @@ func (c *Coordinator) GetTask(_ *struct{}, reply *TaskReply) error {
 				reply = &TaskReply{
 					Id:       t.id,
 					Type:     Reduce,
-					Filename: reduceName(),
-					TasksNum: t.id, // TODO: get TasksNum
+					Filename: t.filename,
 					OtherNum: c.nMap,
 				}
 				t.state = InProgress
@@ -123,15 +122,8 @@ func (c *Coordinator) GetTask(_ *struct{}, reply *TaskReply) error {
 	return nil
 }
 
-func mapName() string {
-	return ""
-}
-
-func reduceName() string {
-	return ""
-}
-
 func (c *Coordinator) setMapTasks() {
+	c.tasks = c.tasks[0:0]
 	// each input files has a map task.
 	for i, f := range c.files {
 		t := Task{
@@ -144,10 +136,20 @@ func (c *Coordinator) setMapTasks() {
 }
 
 func (c *Coordinator) setReduceTasks() {
-	for _, t := range c.tasks {
-		t.state = Idle
-		t.filename = reduceName()
+	c.tasks = c.tasks[0:0]
+	// nReduce tasks in reduce phase.
+	for i := 0; i < c.nReduce; i++ {
+		t := Task{
+			id:       i,
+			state:    Idle,
+			filename: reduceOutputName(i),
+		}
+		c.tasks = append(c.tasks, t)
 	}
+}
+
+func reduceOutputName(id int) string {
+	return "mr-out-" + strconv.Itoa(id)
 }
 
 //

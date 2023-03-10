@@ -9,24 +9,6 @@ package mr
 import "os"
 import "strconv"
 
-//
-// example to show how to declare the arguments
-// and reply for an RPC.
-//
-
-type ExampleArgs struct {
-	X int
-}
-
-type ExampleReply struct {
-	Y int
-}
-
-// RegisterArgs is the argument passed when a worker registers with the master.
-type RegisterArgs struct {
-	Worker string // the worker's UNIX-domain socket name, i.e. its RPC address
-}
-
 type TaskState int
 
 const (

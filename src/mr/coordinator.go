@@ -28,44 +28,6 @@ type Coordinator struct {
 	files   []string
 
 	tasks []Task
-
-	// protected by the mutex
-	newCond *sync.Cond // signals when Register() adds to workers[]
-	workers []string   // each worker's UNIX-domain socket name -- its RPC address
-
-	done chan bool
-}
-
-func (c *Coordinator) Register(args *RegisterArgs, _ *struct{}) error {
-	c.Lock()
-	defer c.Unlock()
-	c.workers = append(c.workers, args.Worker)
-
-	// tell forwardRegistrations() that there's a new workers[] entry.
-	c.newCond.Broadcast()
-
-	return nil
-}
-
-// forwardRegistrations sends information about all existing
-// and newly registered workers to channel ch. schedule()
-// reads ch to learn about workers.
-func (c *Coordinator) forwardRegistrations(ch chan string) {
-	i := 0
-	for {
-		c.Lock()
-		if len(c.workers) > i {
-			// there's a worker that we haven't told schedule() about.
-			w := c.workers[i]
-			go func() { ch <- w }() // send without holding the lock.
-			i = i + 1
-		} else {
-			// wait for Register() to add an entry to workers[]
-			// in response to an RPC from a new worker.
-			c.newCond.Wait()
-		}
-		c.Unlock()
-	}
 }
 
 func (c *Coordinator) getIdleTask(phase Phase, task *Task) {
@@ -180,16 +142,6 @@ func (c *Coordinator) Phase() {
 }
 
 //
-// an example RPC handler.
-//
-// the RPC argument and reply types are defined in rpc.go.
-//
-func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
-	reply.Y = args.X + 1
-	return nil
-}
-
-//
 // start a thread that listens for RPCs from worker.go
 //
 func (c *Coordinator) server() {
@@ -228,9 +180,6 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		nReduce: nReduce,
 		files:   files,
 	}
-
-	c.newCond = sync.NewCond(&c)
-	c.done = make(chan bool)
 
 	c.setMapTasks()
 

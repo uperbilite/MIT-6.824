@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"time"
 )
 import "log"
 import "net/rpc"
@@ -50,7 +51,9 @@ func Worker(mapf func(string, string) []KeyValue,
 		case Map:
 			doMapTask(task, mapf)
 		case Reduce:
+			doReduceTask(task, reducef)
 		case Wait:
+			time.Sleep(5 * time.Second)
 		case Exit:
 			return
 		}
@@ -64,23 +67,16 @@ func getTask() GetTaskReply {
 }
 
 func doMapTask(task GetTaskReply, mapF func(string, string) []KeyValue) {
-	mapTask := task.TaskNum
+	mapTask := task.TasksNum
 	inFileName := task.Filename
-	nReduce := task.NReduce
+	nReduce := task.OtherNum
 
-	f, err := os.Open(inFileName)
-	if err != nil {
-		log.Fatalf("cannot open %v", inFileName)
-	}
-	content, err := ioutil.ReadAll(f)
+	content, err := ioutil.ReadFile(inFileName)
 	if err != nil {
 		log.Fatalf("cannot read %v", inFileName)
 	}
-	f.Close()
 
-	kva := mapF(inFileName, string(content))
-	var intermediate []KeyValue
-	intermediate = append(intermediate, kva...)
+	intermediates := mapF(inFileName, string(content))
 
 	fs := make([]*os.File, nReduce, nReduce)
 	encs := make([]*json.Encoder, nReduce, nReduce)
@@ -89,13 +85,17 @@ func doMapTask(task GetTaskReply, mapF func(string, string) []KeyValue) {
 		encs[i] = json.NewEncoder(fs[i])
 	}
 
-	for _, kv := range intermediate {
+	for _, kv := range intermediates {
 		i := ihash(kv.Key) % nReduce
 		encs[i].Encode(&kv)
 	}
 }
 
-func doReduceTask(jobName string, reduceTask int, outFileName string, nMap int, reduceF func(key string, values []string) string) {
+func doReduceTask(task GetTaskReply, reduceF func(key string, values []string) string) {
+	reduceTask := task.TasksNum
+	outFileName := task.Filename
+	nMap := task.OtherNum
+
 	var kva []KeyValue
 
 	for i := 0; i < nMap; i++ {

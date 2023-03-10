@@ -28,10 +28,11 @@ type RegisterArgs struct {
 }
 
 type GetTaskReply struct {
+	Id       int
 	Filename string
 	State    State
-	TaskNum  int
-	NReduce  int
+	TasksNum int
+	OtherNum int
 }
 
 // Cook up a unique-ish UNIX-domain socket name

@@ -79,18 +79,14 @@ func (c *Coordinator) forwardRegistrations(ch chan string) {
 	}
 }
 
-func (c *Coordinator) GetMapTask(args *GetMapTaskArgs, reply *GetMapTaskReply) error {
+func (c *Coordinator) GetMapTask(_ *struct{}, reply *GetTaskReply) error {
 	if c.processedNum == c.nMap {
 		return nil
 	}
 	reply.Filename = c.files[c.processedNum]
-	reply.TaskNum = c.processedNum
-	reply.NReduce = c.nReduce
+	reply.TasksNum = c.processedNum
+	reply.OtherNum = c.nReduce
 	c.processedNum += 1
-	return nil
-}
-
-func (c *Coordinator) GetReduceTask(args *GetReduceTaskArgs, reply *GetReduceTaskReply) error {
 	return nil
 }
 

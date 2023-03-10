@@ -44,14 +44,30 @@ func ihash(key string) int {
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
-	// Your worker implementation here.
-
-	// uncomment to send the Example RPC to the coordinator.
-	// CallExample()
-
+	for {
+		task := getTask()
+		switch task.State {
+		case Map:
+			doMapTask(task, mapf)
+		case Reduce:
+		case Wait:
+		case Exit:
+			return
+		}
+	}
 }
 
-func doMapTask(jobName string, mapTask int, inFileName string, nReduce int, mapF func(string, string) []KeyValue) {
+func getTask() GetTaskReply {
+	task := GetTaskReply{}
+	call("Coordinator.GetTask", new(struct{}), &task)
+	return task
+}
+
+func doMapTask(task GetTaskReply, mapF func(string, string) []KeyValue) {
+	mapTask := task.TaskNum
+	inFileName := task.Filename
+	nReduce := task.NReduce
+
 	f, err := os.Open(inFileName)
 	if err != nil {
 		log.Fatalf("cannot open %v", inFileName)

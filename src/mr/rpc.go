@@ -27,16 +27,11 @@ type RegisterArgs struct {
 	Worker string // the worker's UNIX-domain socket name, i.e. its RPC address
 }
 
-type GetMapTaskArgs struct {
-}
-
-type GetMapTaskReply struct {
-}
-
-type GetReduceTaskArgs struct {
-}
-
-type GetReduceTaskReply struct {
+type GetTaskReply struct {
+	Filename string
+	State    State
+	TaskNum  int
+	NReduce  int
 }
 
 // Cook up a unique-ish UNIX-domain socket name

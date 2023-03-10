@@ -131,8 +131,23 @@ func reduceName() string {
 	return ""
 }
 
-func (c *Coordinator) GetMapTask(_ *struct{}, reply *TaskReply) error {
-	return nil
+func (c *Coordinator) setMapTasks() {
+	// each input files has a map task.
+	for i, f := range c.files {
+		t := Task{
+			id:       i,
+			state:    Idle,
+			filename: f,
+		}
+		c.tasks = append(c.tasks, t)
+	}
+}
+
+func (c *Coordinator) setReduceTasks() {
+	for _, t := range c.tasks {
+		t.state = Idle
+		t.filename = reduceName()
+	}
 }
 
 //

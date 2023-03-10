@@ -35,9 +35,13 @@ type TaskReply struct {
 	// Reduce type is the output file name.
 	Filename string
 
+	// TasksNum is the number indicates worker to create and read
+	// intermediate files. mappers create mr-{TasksNum}-Y files,
+	// reducers read mr-X-{TasksNum} files. While both X and Y is
+	// from 0 to OtherNum.
 	TasksNum int
 
-	// otherNum is the total number of tasks in other phase; mappers
+	// OtherNum is the total number of tasks in other phase; mappers
 	// need this to compute the number of output bins, and reducers
 	// needs this to know how many input files to collect.
 	OtherNum int

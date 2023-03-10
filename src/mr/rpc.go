@@ -27,12 +27,12 @@ type RegisterArgs struct {
 	Worker string // the worker's UNIX-domain socket name, i.e. its RPC address
 }
 
-type GetTaskReply struct {
+type TaskReply struct {
 	Id   int
 	Type TaskType
 
-	// Filename of Task in Map phase is the input file name, in
-	// Reduce phase is the output file name.
+	// Filename of Map type Task is the input file name, in
+	// Reduce type is the output file name.
 	Filename string
 
 	TasksNum int

@@ -83,11 +83,55 @@ func (c *Coordinator) forwardRegistrations(ch chan string) {
 	}
 }
 
-func (c *Coordinator) GetTask(_ *struct{}, reply *GetTaskReply) error {
+func (c *Coordinator) GetTask(_ *struct{}, reply *TaskReply) error {
+	c.Lock()
+	defer c.Unlock()
+	switch c.phase {
+	case Map:
+		for _, t := range c.tasks {
+			if t.state == Idle {
+				reply = &TaskReply{
+					Id:       t.id,
+					Type:     Map,
+					Filename: mapName(),
+					TasksNum: t.id, // TODO: get TasksNum
+					OtherNum: c.nReduce,
+				}
+				t.state = InProgress
+				break
+			}
+		}
+	case Reduce:
+		for _, t := range c.tasks {
+			if t.state == Idle {
+				reply = &TaskReply{
+					Id:       t.id,
+					Type:     Reduce,
+					Filename: reduceName(),
+					TasksNum: t.id, // TODO: get TasksNum
+					OtherNum: c.nMap,
+				}
+				t.state = InProgress
+				break
+			}
+		}
+	case Wait:
+		reply = &TaskReply{Type: Wait}
+	case Exit:
+		reply = &TaskReply{Type: Exit}
+	}
 	return nil
 }
 
-func (c *Coordinator) GetMapTask(_ *struct{}, reply *GetTaskReply) error {
+func mapName() string {
+	return ""
+}
+
+func reduceName() string {
+	return ""
+}
+
+func (c *Coordinator) GetMapTask(_ *struct{}, reply *TaskReply) error {
 	return nil
 }
 

@@ -58,13 +58,13 @@ func Worker(mapF func(string, string) []KeyValue, reduceF func(string, []string)
 	}
 }
 
-func getTask() GetTaskReply {
-	task := GetTaskReply{}
+func getTask() TaskReply {
+	task := TaskReply{}
 	call("Coordinator.GetTask", new(struct{}), &task)
 	return task
 }
 
-func doMapTask(task GetTaskReply, mapF func(string, string) []KeyValue) {
+func doMapTask(task TaskReply, mapF func(string, string) []KeyValue) {
 	mapTask := task.TasksNum
 	inFileName := task.Filename
 	nReduce := task.OtherNum
@@ -89,7 +89,7 @@ func doMapTask(task GetTaskReply, mapF func(string, string) []KeyValue) {
 	}
 }
 
-func doReduceTask(task GetTaskReply, reduceF func(key string, values []string) string) {
+func doReduceTask(task TaskReply, reduceF func(key string, values []string) string) {
 	reduceTask := task.TasksNum
 	outFileName := task.Filename
 	nMap := task.OtherNum

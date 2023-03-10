@@ -148,6 +148,19 @@ func reduceOutputName(id int) string {
 	return "mr-out-" + strconv.Itoa(id)
 }
 
+func (c *Coordinator) TaskComplete(task *TaskReply, _ *struct{}) error {
+	c.Lock()
+	defer c.Unlock()
+	c.tasks[task.Id].state = Completed
+	return nil
+}
+
+func (c *Coordinator) Phase() {
+	// TODO: monitor task state
+	// TODO: if all task is complete, step into next phase
+	// TODO: Map -> Reduce, Reduce -> Exit
+}
+
 //
 // an example RPC handler.
 //

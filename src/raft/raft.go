@@ -88,7 +88,11 @@ func (rf *Raft) AttemptElection() {
 	rf.state = Candidate
 	rf.currentTerm += 1
 	rf.votedFor = rf.me
+	term := rf.currentTerm
+	votes := 1
+	done := false
 	rf.mu.Unlock()
+
 	log.Printf("[%d] attempting an electrion at term %d.\n", rf.me, rf.currentTerm)
 
 	for server, _ := range rf.peers {
@@ -100,7 +104,19 @@ func (rf *Raft) AttemptElection() {
 			if !voteGranted {
 				return
 			}
-			// TODO: collect votes
+			rf.mu.Lock()
+			defer rf.mu.Unlock()
+			votes += 1
+			log.Printf("[%d] got vote from %d.", rf.me, server)
+			if done || votes <= len(rf.peers)/2 {
+				return
+			}
+			done = true
+			if rf.state != Candidate || rf.currentTerm != term {
+				return
+			}
+			log.Printf("[%d] got enough vote and become leader.(current term: %d)\n", rf.me, rf.currentTerm)
+			rf.state = Leader
 		}(server)
 	}
 }
@@ -171,6 +187,20 @@ type RequestVoteArgs struct {
 	Term        int
 	CandidateId int
 	// TODO: LastLogIndex & LastLogTerm for lab 2B
+}
+
+type AppendEntriesArgs struct {
+	Term     int
+	LeaderId int
+}
+
+type AppendEntriesReply struct {
+	Term    int
+	Success bool // always true for now
+}
+
+func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	return
 }
 
 //

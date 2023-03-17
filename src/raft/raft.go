@@ -18,6 +18,7 @@ package raft
 //
 
 import (
+	"log"
 	//	"bytes"
 	"sync"
 	"sync/atomic"
@@ -49,6 +50,14 @@ type ApplyMsg struct {
 	SnapshotIndex int
 }
 
+type State string
+
+const (
+	Leader    State = "Leader"
+	Candidate State = "Candidate"
+	Follower  State = "Follower"
+)
+
 //
 // A Go object implementing a single Raft peer.
 //
@@ -62,17 +71,38 @@ type Raft struct {
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
+	currentTerm int
+	votedFor    int
 
+	state State
 }
 
 // return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
+	return rf.currentTerm, rf.state == Leader
+}
 
-	var term int
-	var isleader bool
-	// Your code here (2A).
-	return term, isleader
+func (rf *Raft) AttemptElection() {
+	rf.mu.Lock()
+	rf.state = Candidate
+	rf.currentTerm += 1
+	rf.votedFor = rf.me
+	rf.mu.Unlock()
+	log.Printf("[%d] attempting an electrion at term %d.\n", rf.me, rf.currentTerm)
+
+	for server, _ := range rf.peers {
+		if rf.me == server {
+			continue
+		}
+		go func(server int) {
+			voteGranted := rf.CallRequestVote(server)
+			if !voteGranted {
+				return
+			}
+			// TODO: collect votes
+		}(server)
+	}
 }
 
 //
@@ -157,6 +187,34 @@ type RequestVoteReply struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
+	log.Printf("[%d] received request vote from %d.\n", rf.me, args.CandidateId)
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	log.Printf("[%d] handling request vote from %d.\n", rf.me, args.CandidateId)
+	// TODO: handle vote request
+}
+
+func (rf *Raft) CallRequestVote(server int) bool {
+	log.Printf("[%d] sending request vote to %d.\n", rf.me, server)
+
+	rf.mu.Lock()
+	args := RequestVoteArgs{
+		Term:        rf.currentTerm,
+		CandidateId: rf.me,
+	}
+	rf.mu.Unlock()
+	var reply RequestVoteReply
+
+	ok := rf.sendRequestVote(server, &args, &reply)
+	log.Printf("[%d] finish sending request vote to %d.\n", rf.me, server)
+	if !ok {
+		// A false return can be caused by a dead server, a live server that
+		// can't be reached, a lost request, or a lost reply.
+		return false
+	}
+
+	// TODO: return vote result
+	return true
 }
 
 //
@@ -261,8 +319,7 @@ func (rf *Raft) ticker() {
 // Make() must return quickly, so it should start goroutines
 // for any long-running work.
 //
-func Make(peers []*labrpc.ClientEnd, me int,
-	persister *Persister, applyCh chan ApplyMsg) *Raft {
+func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan ApplyMsg) *Raft {
 	rf := &Raft{}
 	rf.peers = peers
 	rf.persister = persister

@@ -18,6 +18,7 @@ package raft
 //
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -142,7 +143,17 @@ func (rf *Raft) StartElection() {
 }
 
 func (rf *Raft) StartHeartbeat() {
-
+	for server, _ := range rf.peers {
+		if rf.me == server {
+			continue
+		}
+		go func(server int) {
+			success := rf.CallAppendEntries(server)
+			if !success {
+				return
+			}
+		}(server)
+	}
 }
 
 //
@@ -259,9 +270,11 @@ func (rf *Raft) electionTicker() {
 		nowTime := time.Now()
 		time.Sleep(time.Duration(GetRandomTimeout()) * time.Millisecond)
 		rf.mu.Lock()
+		fmt.Println(nowTime, rf.lastResetTime)
 		if nowTime.After(rf.lastResetTime) && rf.state != Leader {
 			rf.mu.Unlock()
 			rf.StartElection()
+			rf.mu.Lock()
 		}
 		rf.mu.Unlock()
 	}
@@ -274,6 +287,7 @@ func (rf *Raft) heartbeatTicker() {
 		if rf.state == Leader {
 			rf.mu.Unlock()
 			rf.StartHeartbeat()
+			rf.mu.Lock()
 		}
 		rf.mu.Unlock()
 	}

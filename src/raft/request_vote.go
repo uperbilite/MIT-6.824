@@ -30,8 +30,8 @@ type RequestVoteReply struct {
 // example RequestVote RPC handler.
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	// Your code here (2A, 2B).
 	log.Printf("[%d] received request vote from %d.\n", rf.me, args.CandidateId)
+
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
@@ -55,7 +55,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	rf.lastResetTime = time.Now()
 
-	log.Printf("[%d] finish request vote from %d.\n", rf.me, args.CandidateId)
+	log.Printf("[%d] finish handling request vote from %d.\n", rf.me, args.CandidateId)
 }
 
 func (rf *Raft) CallRequestVote(server int) bool {
@@ -77,8 +77,7 @@ func (rf *Raft) CallRequestVote(server int) bool {
 		return false
 	}
 
-	// TODO: return vote result
-	return true
+	return reply.VoteGranted
 }
 
 //

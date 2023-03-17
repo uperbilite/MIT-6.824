@@ -17,7 +17,8 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 }
 
 const (
-	ElectionTimeout = 150
+	ElectionTimeout  = 150
+	HeartbeatTimeout = 50
 )
 
 func GetRandomTimeout() int {

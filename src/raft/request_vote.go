@@ -46,12 +46,13 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		return
 	}
 	if args.Term > rf.currentTerm {
-		rf.ChangeState(Follower)
+		rf.state = Follower
 		rf.currentTerm, rf.votedFor = biggerTerm, -1
 	}
 	// TODO: compare log
 	rf.votedFor = args.CandidateId
 	reply.Term, reply.VoteGranted = biggerTerm, true
+
 	rf.lastResetTime = time.Now()
 
 	log.Printf("[%d] finish request vote from %d.\n", rf.me, args.CandidateId)

@@ -102,23 +102,18 @@ func (rf *Raft) GetState() (int, bool) {
 	return term, isLeader
 }
 
-func (rf *Raft) ChangeState(state State) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	rf.state = state
-}
-
-func (rf *Raft) AttemptElection() {
+func (rf *Raft) StartElection() {
 	rf.mu.Lock()
 	rf.state = Candidate
 	rf.currentTerm += 1
 	rf.votedFor = rf.me
+	rf.lastResetTime = time.Now()
 	term := rf.currentTerm
 	votes := 1
 	done := false
 	rf.mu.Unlock()
 
-	log.Printf("[%d] attempting an electrion at term %d.\n", rf.me, rf.currentTerm)
+	log.Printf("[%d] starts an electrion at term %d.\n", rf.me, rf.currentTerm)
 
 	for server, _ := range rf.peers {
 		if rf.me == server {
@@ -133,7 +128,7 @@ func (rf *Raft) AttemptElection() {
 			defer rf.mu.Unlock()
 			votes += 1
 			log.Printf("[%d] got vote from %d.", rf.me, server)
-			if done || votes <= len(rf.peers)/2+1 {
+			if done || votes < len(rf.peers)/2+1 {
 				return
 			}
 			done = true
@@ -144,6 +139,10 @@ func (rf *Raft) AttemptElection() {
 			rf.state = Leader
 		}(server)
 	}
+}
+
+func (rf *Raft) StartHeartbeat() {
+
 }
 
 //
@@ -259,9 +258,24 @@ func (rf *Raft) electionTicker() {
 		// time.Sleep().
 		nowTime := time.Now()
 		time.Sleep(time.Duration(GetRandomTimeout()) * time.Millisecond)
-		if nowTime.After(rf.lastResetTime) {
-			rf.AttemptElection()
+		rf.mu.Lock()
+		if nowTime.After(rf.lastResetTime) && rf.state != Leader {
+			rf.mu.Unlock()
+			rf.StartElection()
 		}
+		rf.mu.Unlock()
+	}
+}
+
+func (rf *Raft) heartbeatTicker() {
+	for rf.killed() == false {
+		time.Sleep(HeartbeatTimeout * time.Millisecond)
+		rf.mu.Lock()
+		if rf.state == Leader {
+			rf.mu.Unlock()
+			rf.StartHeartbeat()
+		}
+		rf.mu.Unlock()
 	}
 }
 
@@ -277,18 +291,29 @@ func (rf *Raft) electionTicker() {
 // for any long-running work.
 //
 func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan ApplyMsg) *Raft {
-	rf := &Raft{}
-	rf.peers = peers
-	rf.persister = persister
-	rf.me = me
+	rf := &Raft{
+		peers:         peers,
+		persister:     persister,
+		me:            me,
+		dead:          0,
+		state:         Follower,
+		lastResetTime: time.Now(),
+		currentTerm:   1,
+		votedFor:      -1,
+		log:           nil,
+		commitIndex:   0,
+		lastApplied:   0,
+		nextIndex:     nil,
+		matchIndex:    nil,
+	}
 
 	// Your initialization code here (2A, 2B, 2C).
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
-	// start electionTicker goroutine to start elections
 	go rf.electionTicker()
+	go rf.heartbeatTicker()
 
 	return rf
 }

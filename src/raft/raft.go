@@ -18,8 +18,6 @@ package raft
 //
 
 import (
-	"fmt"
-	"log"
 	"time"
 
 	//	"bytes"
@@ -104,7 +102,6 @@ func (rf *Raft) GetState() (int, bool) {
 }
 
 func (rf *Raft) StartElection() {
-	rf.mu.Lock()
 	rf.state = Candidate
 	rf.currentTerm += 1
 	rf.votedFor = rf.me
@@ -112,9 +109,8 @@ func (rf *Raft) StartElection() {
 	term := rf.currentTerm
 	votes := 1
 	done := false
-	rf.mu.Unlock()
 
-	log.Printf("[%d] starts an electrion at term %d.\n", rf.me, rf.currentTerm)
+	DPrintf("[%d] starts an electrion at term %d.\n", rf.me, rf.currentTerm)
 
 	for server, _ := range rf.peers {
 		if rf.me == server {
@@ -128,7 +124,7 @@ func (rf *Raft) StartElection() {
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
 			votes += 1
-			log.Printf("[%d] got vote from %d.", rf.me, server)
+			DPrintf("[%d] got vote from %d.", rf.me, server)
 			if done || votes < len(rf.peers)/2+1 {
 				return
 			}
@@ -136,13 +132,15 @@ func (rf *Raft) StartElection() {
 			if rf.state != Candidate || rf.currentTerm != term {
 				return
 			}
-			log.Printf("[%d] got enough vote and become leader.(current term: %d)\n", rf.me, rf.currentTerm)
+			DPrintf("[%d] got enough vote and become leader.(current term: %d)\n", rf.me, rf.currentTerm)
 			rf.state = Leader
+			rf.StartHeartbeat()
 		}(server)
 	}
 }
 
 func (rf *Raft) StartHeartbeat() {
+	DPrintf("[%d] start heartbeat at term %d.\n", rf.me, rf.currentTerm)
 	for server, _ := range rf.peers {
 		if rf.me == server {
 			continue
@@ -270,11 +268,8 @@ func (rf *Raft) electionTicker() {
 		nowTime := time.Now()
 		time.Sleep(time.Duration(GetRandomTimeout()) * time.Millisecond)
 		rf.mu.Lock()
-		fmt.Println(nowTime, rf.lastResetTime)
 		if nowTime.After(rf.lastResetTime) && rf.state != Leader {
-			rf.mu.Unlock()
 			rf.StartElection()
-			rf.mu.Lock()
 		}
 		rf.mu.Unlock()
 	}
@@ -285,9 +280,7 @@ func (rf *Raft) heartbeatTicker() {
 		time.Sleep(HeartbeatTimeout * time.Millisecond)
 		rf.mu.Lock()
 		if rf.state == Leader {
-			rf.mu.Unlock()
 			rf.StartHeartbeat()
-			rf.mu.Lock()
 		}
 		rf.mu.Unlock()
 	}
@@ -310,7 +303,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 		persister:     persister,
 		me:            me,
 		dead:          0,
-		state:         Follower,
+		state:         Candidate,
 		lastResetTime: time.Now(),
 		currentTerm:   1,
 		votedFor:      -1,

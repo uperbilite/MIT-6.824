@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"log"
 	"math"
 	"time"
 )
@@ -30,7 +29,7 @@ type RequestVoteReply struct {
 // example RequestVote RPC handler.
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	log.Printf("[%d] received request vote from %d.\n", rf.me, args.CandidateId)
+	DPrintf("[%d] received request vote from %d.\n", rf.me, args.CandidateId)
 
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -55,11 +54,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	rf.lastResetTime = time.Now()
 
-	log.Printf("[%d] finish handling request vote from %d.\n", rf.me, args.CandidateId)
+	DPrintf("[%d] finish handling request vote from %d.\n", rf.me, args.CandidateId)
 }
 
 func (rf *Raft) CallRequestVote(server int) bool {
-	log.Printf("[%d] sending request vote to %d.\n", rf.me, server)
+	DPrintf("[%d] sending request vote to %d.\n", rf.me, server)
 
 	rf.mu.Lock()
 	args := RequestVoteArgs{
@@ -70,7 +69,7 @@ func (rf *Raft) CallRequestVote(server int) bool {
 	var reply RequestVoteReply
 
 	ok := rf.sendRequestVote(server, &args, &reply)
-	log.Printf("[%d] finish sending request vote to %d.\n", rf.me, server)
+	DPrintf("[%d] finish sending request vote to %d.\n", rf.me, server)
 	if !ok {
 		// A false return can be caused by a dead server, a live server that
 		// can't be reached, a lost request, or a lost reply.

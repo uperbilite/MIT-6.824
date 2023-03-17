@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"log"
 	"math"
 	"time"
 )
@@ -21,25 +20,32 @@ type AppendEntriesReply struct {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	log.Printf("[%d] received heartbeat from leader: %d.\n", rf.me, args.LeaderId)
+	DPrintf("[%d] received heartbeat from leader: %d.\n", rf.me, args.LeaderId)
 
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
 	biggerTerm := int(math.Max(float64(args.Term), float64(rf.currentTerm)))
 
-	if args.LeaderId < rf.currentTerm {
+	if args.Term < rf.currentTerm {
 		reply.Term, reply.Success = biggerTerm, false
 		return
+	}
+	if args.Term > rf.currentTerm {
+		rf.state = Follower
+		rf.currentTerm = args.Term
+	}
+	if rf.state == Candidate {
+		rf.state = Follower
 	}
 
 	rf.lastResetTime = time.Now()
 
-	log.Printf("[%d] finish handling heartbeat from leader : %d.\n", rf.me, args.LeaderId)
+	DPrintf("[%d] finish handling heartbeat from leader : %d.\n", rf.me, args.LeaderId)
 }
 
 func (rf *Raft) CallAppendEntries(server int) bool {
-	log.Printf("[%d] appending entries to %d.\n", rf.me, server)
+	DPrintf("[%d] appending entries to %d.\n", rf.me, server)
 
 	rf.mu.Lock()
 	args := AppendEntriesArgs{
@@ -50,7 +56,7 @@ func (rf *Raft) CallAppendEntries(server int) bool {
 
 	var reply AppendEntriesReply
 	ok := rf.sendAppendEntries(server, &args, &reply)
-	log.Printf("[%d] finish appending entries to %d.\n", rf.me, server)
+	DPrintf("[%d] finish appending entries to %d.\n", rf.me, server)
 	if !ok {
 		return false
 	}

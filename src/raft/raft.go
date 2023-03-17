@@ -19,6 +19,9 @@ package raft
 
 import (
 	"log"
+	"math"
+	"time"
+
 	//	"bytes"
 	"sync"
 	"sync/atomic"
@@ -58,6 +61,11 @@ const (
 	Follower  State = "Follower"
 )
 
+type Entry struct {
+	Term    int
+	Command interface{}
+}
+
 //
 // A Go object implementing a single Raft peer.
 //
@@ -68,19 +76,36 @@ type Raft struct {
 	me        int                 // this peer's index into peers[]
 	dead      int32               // set by Kill()
 
+	state State
+
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 	currentTerm int
 	votedFor    int
+	log         []Entry
 
-	state State
+	commitIndex int
+	lastApplied int
+
+	nextIndex  []int
+	matchIndex []int
 }
 
 // return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
-	return rf.currentTerm, rf.state == Leader
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	term := rf.currentTerm
+	isLeader := rf.state == Leader
+	return term, isLeader
+}
+
+func (rf *Raft) ChangeState(state State) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.state = state
 }
 
 func (rf *Raft) AttemptElection() {
@@ -179,19 +204,13 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 
 }
 
-//
-// example RequestVote RPC arguments structure.
-// field names must start with capital letters!
-//
-type RequestVoteArgs struct {
-	Term        int
-	CandidateId int
-	// TODO: LastLogIndex & LastLogTerm for lab 2B
-}
-
 type AppendEntriesArgs struct {
-	Term     int
-	LeaderId int
+	Term         int
+	LeaderId     int
+	PrevLogIndex int
+	PrevLogTerm  int
+	Entries      []Entry
+	LeaderCommit int
 }
 
 type AppendEntriesReply struct {
@@ -201,6 +220,17 @@ type AppendEntriesReply struct {
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	return
+}
+
+//
+// example RequestVote RPC arguments structure.
+// field names must start with capital letters!
+//
+type RequestVoteArgs struct {
+	Term         int
+	CandidateId  int
+	LastLogIndex int
+	LastLogTerm  int
 }
 
 //
@@ -221,7 +251,24 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	log.Printf("[%d] handling request vote from %d.\n", rf.me, args.CandidateId)
-	// TODO: handle vote request
+
+	biggerTerm := int(math.Max(float64(args.Term), float64(rf.currentTerm)))
+	if args.Term == rf.currentTerm && rf.votedFor != -1 && args.CandidateId == rf.votedFor {
+		reply.Term, reply.VoteGranted = biggerTerm, false
+		return
+	}
+	if args.Term < rf.currentTerm {
+		reply.Term, reply.VoteGranted = biggerTerm, false
+		return
+	}
+	if args.Term > rf.currentTerm {
+		rf.ChangeState(Follower)
+		rf.currentTerm, rf.votedFor = biggerTerm, -1
+	}
+	rf.votedFor = args.CandidateId
+	reply.Term, reply.VoteGranted = biggerTerm, true
+	// TODO: reset ticker
+
 }
 
 func (rf *Raft) CallRequestVote(server int) bool {
@@ -334,6 +381,8 @@ func (rf *Raft) ticker() {
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
+		time.Sleep(50 * time.Millisecond) // sleep 50ms for now
+		rf.AttemptElection()
 
 	}
 }

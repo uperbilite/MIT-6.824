@@ -76,7 +76,8 @@ type Raft struct {
 	me        int                 // this peer's index into peers[]
 	dead      int32               // set by Kill()
 
-	state State
+	state         State
+	lastResetTime time.Time
 
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
@@ -133,7 +134,7 @@ func (rf *Raft) AttemptElection() {
 			defer rf.mu.Unlock()
 			votes += 1
 			log.Printf("[%d] got vote from %d.", rf.me, server)
-			if done || votes <= len(rf.peers)/2 {
+			if done || votes <= len(rf.peers)/2+1 {
 				return
 			}
 			done = true
@@ -250,9 +251,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	log.Printf("[%d] received request vote from %d.\n", rf.me, args.CandidateId)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	log.Printf("[%d] handling request vote from %d.\n", rf.me, args.CandidateId)
 
 	biggerTerm := int(math.Max(float64(args.Term), float64(rf.currentTerm)))
+
 	if args.Term == rf.currentTerm && rf.votedFor != -1 && args.CandidateId == rf.votedFor {
 		reply.Term, reply.VoteGranted = biggerTerm, false
 		return
@@ -265,10 +266,12 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.ChangeState(Follower)
 		rf.currentTerm, rf.votedFor = biggerTerm, -1
 	}
+	// TODO: compare log
 	rf.votedFor = args.CandidateId
 	reply.Term, reply.VoteGranted = biggerTerm, true
-	// TODO: reset ticker
+	rf.lastResetTime = time.Now()
 
+	log.Printf("[%d] finish request vote from %d.\n", rf.me, args.CandidateId)
 }
 
 func (rf *Raft) CallRequestVote(server int) bool {
@@ -373,17 +376,19 @@ func (rf *Raft) killed() bool {
 	return z == 1
 }
 
-// The ticker go routine starts a new election if this peer hasn't received
+// The electionTicker go routine starts a new election if this peer hasn't received
 // heartsbeats recently.
-func (rf *Raft) ticker() {
+func (rf *Raft) electionTicker() {
 	for rf.killed() == false {
 
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
-		time.Sleep(50 * time.Millisecond) // sleep 50ms for now
-		rf.AttemptElection()
-
+		nowTime := time.Now()
+		time.Sleep(time.Duration(GetRandomTimeout()) * time.Millisecond)
+		if nowTime.After(rf.lastResetTime) {
+			rf.AttemptElection()
+		}
 	}
 }
 
@@ -409,8 +414,8 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
-	// start ticker goroutine to start elections
-	go rf.ticker()
+	// start electionTicker goroutine to start elections
+	go rf.electionTicker()
 
 	return rf
 }

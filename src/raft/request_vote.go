@@ -38,7 +38,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.Term, reply.VoteGranted = biggerTerm, false
 		return
 	}
-	if args.Term == rf.currentTerm && rf.votedFor != -1 && rf.votedFor == args.CandidateId {
+	if args.Term == rf.currentTerm && rf.votedFor != -1 && rf.votedFor != args.CandidateId {
 		reply.Term, reply.VoteGranted = biggerTerm, false
 		return
 	}
@@ -47,8 +47,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.state = Follower
 		rf.currentTerm, rf.votedFor = biggerTerm, -1
 	}
+
 	// TODO: compare log
-	DebugGrantVote(rf.me, rf.votedFor, rf.currentTerm)
+	DebugGrantVote(rf.me, args.CandidateId, rf.currentTerm)
 	rf.votedFor = args.CandidateId
 	reply.Term, reply.VoteGranted = biggerTerm, true
 

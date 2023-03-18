@@ -75,6 +75,10 @@ func DebugGetVote(s1, s2, term int) {
 	Debug(dVote, "S%d <-VOTE-< S%d at T%d", s1, s2, term)
 }
 
+func DebugRequestVote(s1, s2, term int) {
+	Debug(dVote, "S%d Request Vote From S%d at T%d", s1, s2, term)
+}
+
 // become to leader
 func DebugToLeader(s, num, term int) {
 	Debug(dLeader, "S%d is Leader(%d) for T%d", s, num, term)
@@ -115,6 +119,6 @@ const (
 )
 
 func GetRandomTimeout() int {
-	rand.Seed(time.Now().Unix())
+	rand.Seed(time.Now().UnixNano())
 	return rand.Intn(ElectionTimeout) + ElectionTimeout
 }

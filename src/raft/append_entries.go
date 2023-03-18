@@ -20,8 +20,7 @@ type AppendEntriesReply struct {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	DPrintf("[%d %s] received heartbeat from leader: %d.\n", rf.me, rf.state, args.LeaderId)
-
+	DebugReceiveHB(rf.me, args.LeaderId, rf.currentTerm)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
@@ -32,6 +31,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 	if args.Term > rf.currentTerm {
+		DebugToFollower(rf, biggerTerm)
 		rf.state = Follower
 		rf.currentTerm, rf.votedFor = biggerTerm, -1
 	}
@@ -39,8 +39,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.state = Follower
 	reply.Term, reply.Success = biggerTerm, true
 	rf.lastResetTime = time.Now()
-
-	DPrintf("[%d %s] finish handling heartbeat from leader: %d.\n", rf.me, rf.state, args.LeaderId)
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {

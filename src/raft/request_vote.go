@@ -29,8 +29,6 @@ type RequestVoteReply struct {
 // example RequestVote RPC handler.
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	DPrintf("[%d %s] received request vote from %d.\n", rf.me, rf.state, args.CandidateId)
-
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
@@ -45,16 +43,16 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		return
 	}
 	if args.Term > rf.currentTerm {
+		DebugToFollower(rf, biggerTerm)
 		rf.state = Follower
 		rf.currentTerm, rf.votedFor = biggerTerm, -1
 	}
 	// TODO: compare log
+	DebugGrantVote(rf.me, rf.votedFor, rf.currentTerm)
 	rf.votedFor = args.CandidateId
 	reply.Term, reply.VoteGranted = biggerTerm, true
 
 	rf.lastResetTime = time.Now()
-
-	DPrintf("[%d %s] finish handling request vote from %d.\n", rf.me, rf.state, args.CandidateId)
 }
 
 //

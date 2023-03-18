@@ -103,13 +103,8 @@ func (rf *Raft) GetState() (int, bool) {
 }
 
 func (rf *Raft) StartElection() {
-	rf.currentTerm += 1
-	rf.votedFor = rf.me
-	rf.lastResetTime = time.Now()
 	term := rf.currentTerm
 	votes := 1
-
-	DPrintf("[%d %s] start an election at term %d.\n", rf.me, rf.state, rf.currentTerm)
 
 	for server, _ := range rf.peers {
 		if rf.me == server {
@@ -128,14 +123,15 @@ func (rf *Raft) StartElection() {
 				rf.mu.Lock()
 				defer rf.mu.Unlock()
 				if reply.VoteGranted {
+					DebugGetVote(rf.me, server, rf.currentTerm)
 					votes += 1
 					if votes > len(rf.peers)/2 {
-						DPrintf("[%d %s] become leader at term %d in election.\n", rf.me, rf.state, rf.currentTerm)
+						DebugToLeader(rf.me, votes, rf.currentTerm)
 						rf.state = Leader
 						rf.SendHeartbeat()
 					}
 				} else if reply.Term > rf.currentTerm {
-					DPrintf("[%d %s] become follower at term %d in election.\n", rf.me, rf.state, rf.currentTerm)
+					DebugToFollower(rf, reply.Term)
 					rf.state = Follower
 					rf.currentTerm, rf.votedFor = reply.Term, -1
 				}
@@ -147,8 +143,6 @@ func (rf *Raft) StartElection() {
 func (rf *Raft) SendHeartbeat() {
 	term := rf.currentTerm
 	rf.lastResetTime = time.Now()
-
-	DPrintf("[%d %s] start heartbeat at term %d.\n", rf.me, rf.state, rf.currentTerm)
 
 	for server, _ := range rf.peers {
 		if rf.me == server {
@@ -163,11 +157,12 @@ func (rf *Raft) SendHeartbeat() {
 			if rf.state != Leader || rf.currentTerm != term {
 				return
 			}
+			DebugSendingAppendEntries(rf, server, &args)
 			if ok := rf.sendAppendEntries(server, &args, &reply); ok {
 				rf.mu.Lock()
 				defer rf.mu.Unlock()
 				if reply.Term > rf.currentTerm {
-					DPrintf("[%d %s] become follower at term %d in heartbeat.\n", rf.me, rf.state, rf.currentTerm)
+					DebugToFollower(rf, reply.Term)
 					rf.state = Follower
 					rf.currentTerm, rf.votedFor = reply.Term, -1
 				}
@@ -292,6 +287,10 @@ func (rf *Raft) electionTicker() {
 		rf.mu.Lock()
 		if nowTime.After(rf.lastResetTime) && rf.state != Leader {
 			rf.state = Candidate
+			rf.currentTerm += 1
+			rf.votedFor = rf.me
+			rf.lastResetTime = time.Now()
+			DebugELT(rf.me, rf.currentTerm)
 			rf.StartElection()
 		}
 		rf.mu.Unlock()

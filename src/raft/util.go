@@ -67,32 +67,32 @@ func Debug(topic logTopic, format string, a ...interface{}) {
 
 // send vote
 func DebugGrantVote(s1, s2, term int) {
-	Debug(dVote, "S%d >->-VOTE->-> S%d at T%d", s1, s2, term)
+	Debug(dVote, "S%d >-VOTE-> S%d at T%d", s1, s2, term)
 }
 
 // receive vote
 func DebugGetVote(s1, s2, term int) {
-	Debug(dVote, "S%d <-<-VOTE-<-< S%d at T%d", s1, s2, term)
+	Debug(dVote, "S%d <-VOTE-< S%d at T%d", s1, s2, term)
 }
 
 // become to leader
 func DebugToLeader(s, num, term int) {
-	Debug(dLeader, "S%d Receive Majority(%d) for T%d, become Leader", s, num, term)
+	Debug(dLeader, "S%d is Leader(%d) for T%d", s, num, term)
 }
 
 // become to follower
 func DebugToFollower(rf *Raft, newTerm int) {
-	Debug(dTrace, "S%d Change State From [%s:%d] To [Follower:%d]", rf.me, rf.state, rf.currentTerm, newTerm)
+	Debug(dTrace, "S%d [%s:%d] -> [Follower:%d]", rf.me, rf.state, rf.currentTerm, newTerm)
 }
 
 // election timeout
 func DebugELT(s, term int) {
-	Debug(dTimer, "S%d Election Timeout, Start Election for T%d", s, term)
+	Debug(dTimer, "S%d Start Election for T%d", s, term)
 }
 
 // receive heartbeat
 func DebugReceiveHB(s1, s2, term int) {
-	Debug(dTimer, "S%d <-<-HB-<-< S%d at T%d", s1, s2, term)
+	Debug(dTimer, "S%d <-HB-< S%d at T%d", s1, s2, term)
 }
 
 func DebugGetInfo(rf *Raft) {
@@ -105,9 +105,13 @@ func DebugSendingAppendEntries(rf *Raft, server int, args *AppendEntriesArgs) {
 		args.LeaderCommit)
 }
 
+func DebugTest(s string) {
+	Debug(dTest, s)
+}
+
 const (
-	ElectionTimeout  = 400
-	HeartbeatTimeout = 300
+	ElectionTimeout  = 150
+	HeartbeatTimeout = 50
 )
 
 func GetRandomTimeout() int {

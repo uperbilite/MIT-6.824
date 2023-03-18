@@ -21,6 +21,7 @@ type AppendEntriesReply struct {
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	DebugReceiveHB(rf.me, args.LeaderId, rf.currentTerm)
+
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
@@ -36,9 +37,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		rf.currentTerm, rf.votedFor = biggerTerm, -1
 	}
 
+	// stay follower in response to heartbeat or append entries
 	rf.state = Follower
-	reply.Term, reply.Success = biggerTerm, true
 	rf.lastResetTime = time.Now()
+
+	reply.Term, reply.Success = biggerTerm, true
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {

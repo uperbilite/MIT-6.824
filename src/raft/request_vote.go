@@ -29,18 +29,18 @@ type RequestVoteReply struct {
 // example RequestVote RPC handler.
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	DPrintf("[%d] received request vote from %d.\n", rf.me, args.CandidateId)
+	DPrintf("[%d %s] received request vote from %d.\n", rf.me, rf.state, args.CandidateId)
 
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
 	biggerTerm := int(math.Max(float64(args.Term), float64(rf.currentTerm)))
 
-	if args.Term == rf.currentTerm && rf.votedFor != -1 && args.CandidateId == rf.votedFor {
+	if args.Term < rf.currentTerm {
 		reply.Term, reply.VoteGranted = biggerTerm, false
 		return
 	}
-	if args.Term < rf.currentTerm {
+	if args.Term == rf.currentTerm && rf.votedFor != -1 && rf.votedFor == args.CandidateId {
 		reply.Term, reply.VoteGranted = biggerTerm, false
 		return
 	}
@@ -54,29 +54,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	rf.lastResetTime = time.Now()
 
-	DPrintf("[%d] finish handling request vote from %d.\n", rf.me, args.CandidateId)
-}
-
-func (rf *Raft) CallRequestVote(server int) bool {
-	DPrintf("[%d] sending request vote to %d.\n", rf.me, server)
-
-	rf.mu.Lock()
-	args := RequestVoteArgs{
-		Term:        rf.currentTerm,
-		CandidateId: rf.me,
-	}
-	rf.mu.Unlock()
-	var reply RequestVoteReply
-
-	ok := rf.sendRequestVote(server, &args, &reply)
-	DPrintf("[%d] finish sending request vote to %d.\n", rf.me, server)
-	if !ok {
-		// A false return can be caused by a dead server, a live server that
-		// can't be reached, a lost request, or a lost reply.
-		return false
-	}
-
-	return reply.VoteGranted
+	DPrintf("[%d %s] finish handling request vote from %d.\n", rf.me, rf.state, args.CandidateId)
 }
 
 //

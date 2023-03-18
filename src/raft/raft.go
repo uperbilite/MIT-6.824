@@ -76,6 +76,7 @@ type Raft struct {
 
 	state         State
 	lastResetTime time.Time
+	applyCh       chan ApplyMsg
 
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
@@ -102,53 +103,74 @@ func (rf *Raft) GetState() (int, bool) {
 }
 
 func (rf *Raft) StartElection() {
-	rf.state = Candidate
 	rf.currentTerm += 1
 	rf.votedFor = rf.me
 	rf.lastResetTime = time.Now()
 	term := rf.currentTerm
 	votes := 1
-	done := false
 
-	DPrintf("[%d] starts an electrion at term %d.\n", rf.me, rf.currentTerm)
+	DPrintf("[%d %s] start an election at term %d.\n", rf.me, rf.state, rf.currentTerm)
 
 	for server, _ := range rf.peers {
 		if rf.me == server {
 			continue
 		}
 		go func(server int) {
-			voteGranted := rf.CallRequestVote(server)
-			if !voteGranted {
-				return
+			args := RequestVoteArgs{
+				Term:        rf.currentTerm,
+				CandidateId: rf.me,
 			}
-			rf.mu.Lock()
-			defer rf.mu.Unlock()
-			votes += 1
-			DPrintf("[%d] got vote from %d.", rf.me, server)
-			if done || votes < len(rf.peers)/2+1 {
-				return
-			}
-			done = true
+			var reply RequestVoteReply
 			if rf.state != Candidate || rf.currentTerm != term {
 				return
 			}
-			DPrintf("[%d] got enough vote and become leader.(current term: %d)\n", rf.me, rf.currentTerm)
-			rf.state = Leader
-			rf.StartHeartbeat()
+			if ok := rf.sendRequestVote(server, &args, &reply); ok {
+				rf.mu.Lock()
+				defer rf.mu.Unlock()
+				if reply.VoteGranted {
+					votes += 1
+					if votes > len(rf.peers)/2 {
+						DPrintf("[%d %s] become leader at term %d in election.\n", rf.me, rf.state, rf.currentTerm)
+						rf.state = Leader
+						rf.SendHeartbeat()
+					}
+				} else if reply.Term > rf.currentTerm {
+					DPrintf("[%d %s] become follower at term %d in election.\n", rf.me, rf.state, rf.currentTerm)
+					rf.state = Follower
+					rf.currentTerm, rf.votedFor = reply.Term, -1
+				}
+			}
 		}(server)
 	}
 }
 
-func (rf *Raft) StartHeartbeat() {
-	DPrintf("[%d] start heartbeat at term %d.\n", rf.me, rf.currentTerm)
+func (rf *Raft) SendHeartbeat() {
+	term := rf.currentTerm
+	rf.lastResetTime = time.Now()
+
+	DPrintf("[%d %s] start heartbeat at term %d.\n", rf.me, rf.state, rf.currentTerm)
+
 	for server, _ := range rf.peers {
 		if rf.me == server {
 			continue
 		}
 		go func(server int) {
-			success := rf.CallAppendEntries(server)
-			if !success {
+			args := AppendEntriesArgs{
+				Term:     rf.currentTerm,
+				LeaderId: rf.me,
+			}
+			var reply AppendEntriesReply
+			if rf.state != Leader || rf.currentTerm != term {
 				return
+			}
+			if ok := rf.sendAppendEntries(server, &args, &reply); ok {
+				rf.mu.Lock()
+				defer rf.mu.Unlock()
+				if reply.Term > rf.currentTerm {
+					DPrintf("[%d %s] become follower at term %d in heartbeat.\n", rf.me, rf.state, rf.currentTerm)
+					rf.state = Follower
+					rf.currentTerm, rf.votedFor = reply.Term, -1
+				}
 			}
 		}(server)
 	}
@@ -269,6 +291,7 @@ func (rf *Raft) electionTicker() {
 		time.Sleep(time.Duration(GetRandomTimeout()) * time.Millisecond)
 		rf.mu.Lock()
 		if nowTime.After(rf.lastResetTime) && rf.state != Leader {
+			rf.state = Candidate
 			rf.StartElection()
 		}
 		rf.mu.Unlock()
@@ -280,7 +303,7 @@ func (rf *Raft) heartbeatTicker() {
 		time.Sleep(HeartbeatTimeout * time.Millisecond)
 		rf.mu.Lock()
 		if rf.state == Leader {
-			rf.StartHeartbeat()
+			rf.SendHeartbeat()
 		}
 		rf.mu.Unlock()
 	}
@@ -303,9 +326,10 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 		persister:     persister,
 		me:            me,
 		dead:          0,
-		state:         Candidate,
+		state:         Follower,
 		lastResetTime: time.Now(),
-		currentTerm:   1,
+		applyCh:       applyCh,
+		currentTerm:   0,
 		votedFor:      -1,
 		log:           nil,
 		commitIndex:   0,

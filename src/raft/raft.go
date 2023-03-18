@@ -103,6 +103,7 @@ func (rf *Raft) GetState() (int, bool) {
 }
 
 func (rf *Raft) StartElection(term int) {
+	rf.votedFor = rf.me
 	votes := 1
 
 	for server, _ := range rf.peers {
@@ -118,6 +119,7 @@ func (rf *Raft) StartElection(term int) {
 			var reply RequestVoteReply
 			rf.mu.Unlock()
 
+			DebugRequestVote(rf.me, server, rf.currentTerm)
 			if ok := rf.sendRequestVote(server, &args, &reply); ok {
 				rf.mu.Lock()
 				defer rf.mu.Unlock()
@@ -290,10 +292,9 @@ func (rf *Raft) electionTicker() {
 		if nowTime.After(rf.lastResetTime) && rf.state != Leader {
 			rf.state = Candidate
 			rf.currentTerm += 1
-			rf.votedFor = rf.me
+			rf.lastResetTime = time.Now()
 			DebugELT(rf.me, rf.currentTerm)
 			rf.StartElection(rf.currentTerm)
-			rf.lastResetTime = time.Now()
 		}
 		rf.mu.Unlock()
 	}
@@ -304,8 +305,8 @@ func (rf *Raft) heartbeatTicker() {
 		time.Sleep(HeartbeatTimeout * time.Millisecond)
 		rf.mu.Lock()
 		if rf.state == Leader {
-			rf.SendHeartbeat(rf.currentTerm)
 			rf.lastResetTime = time.Now()
+			rf.SendHeartbeat(rf.currentTerm)
 		}
 		rf.mu.Unlock()
 	}

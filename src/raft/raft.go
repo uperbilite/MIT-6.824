@@ -106,7 +106,7 @@ func (rf *Raft) StartElection(term int) {
 	rf.votedFor = rf.me
 	votes := 1
 
-	for server, _ := range rf.peers {
+	for server := range rf.peers {
 		if rf.me == server {
 			continue
 		}
@@ -120,32 +120,35 @@ func (rf *Raft) StartElection(term int) {
 			rf.mu.Unlock()
 
 			DebugRequestVote(rf.me, server, rf.currentTerm)
-			if ok := rf.sendRequestVote(server, &args, &reply); ok {
-				rf.mu.Lock()
-				defer rf.mu.Unlock()
-				if rf.state != Candidate || rf.currentTerm != term {
-					return
+			if ok := rf.sendRequestVote(server, &args, &reply); !ok {
+				return
+			}
+
+			rf.mu.Lock()
+			defer rf.mu.Unlock()
+
+			if rf.state != Candidate || rf.currentTerm != term {
+				return
+			}
+			if reply.VoteGranted {
+				DebugGetVote(rf.me, server, rf.currentTerm)
+				votes += 1
+				if votes > len(rf.peers)/2 {
+					DebugToLeader(rf.me, votes, rf.currentTerm)
+					rf.state = Leader
+					rf.SendHeartbeat(rf.currentTerm)
 				}
-				if reply.VoteGranted {
-					DebugGetVote(rf.me, server, rf.currentTerm)
-					votes += 1
-					if votes > len(rf.peers)/2 {
-						DebugToLeader(rf.me, votes, rf.currentTerm)
-						rf.state = Leader
-						rf.SendHeartbeat(rf.currentTerm)
-					}
-				} else if reply.Term > rf.currentTerm {
-					DebugToFollower(rf, reply.Term)
-					rf.state = Follower
-					rf.currentTerm, rf.votedFor = reply.Term, -1
-				}
+			} else if reply.Term > rf.currentTerm {
+				DebugToFollower(rf, reply.Term)
+				rf.state = Follower
+				rf.currentTerm, rf.votedFor = reply.Term, -1
 			}
 		}(server)
 	}
 }
 
 func (rf *Raft) SendHeartbeat(term int) {
-	for server, _ := range rf.peers {
+	for server := range rf.peers {
 		if rf.me == server {
 			continue
 		}
@@ -159,17 +162,20 @@ func (rf *Raft) SendHeartbeat(term int) {
 			DebugSendingAppendEntries(rf, server, &args)
 			rf.mu.Unlock()
 
-			if ok := rf.sendAppendEntries(server, &args, &reply); ok {
-				rf.mu.Lock()
-				defer rf.mu.Unlock()
-				if rf.state != Leader || rf.currentTerm != term {
-					return
-				}
-				if reply.Term > rf.currentTerm {
-					DebugToFollower(rf, reply.Term)
-					rf.state = Follower
-					rf.currentTerm, rf.votedFor = reply.Term, -1
-				}
+			if ok := rf.sendAppendEntries(server, &args, &reply); !ok {
+				return
+			}
+
+			rf.mu.Lock()
+			defer rf.mu.Unlock()
+
+			if rf.state != Leader || rf.currentTerm != term {
+				return
+			}
+			if reply.Term > rf.currentTerm {
+				DebugToFollower(rf, reply.Term)
+				rf.state = Follower
+				rf.currentTerm, rf.votedFor = reply.Term, -1
 			}
 		}(server)
 	}

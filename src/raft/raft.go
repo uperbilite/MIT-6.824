@@ -78,7 +78,7 @@ type Raft struct {
 	state         State
 	lastResetTime time.Time
 	applyCh       chan ApplyMsg
-	applyCond     sync.Cond
+	applyCond     *sync.Cond
 
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
@@ -180,7 +180,6 @@ func (rf *Raft) sendHeartbeat(term int) {
 		}
 		go func(server int) {
 			if rf.getLastLogIndex() >= rf.nextIndex[server] {
-				// TODO: send append entries
 				rf.mu.Lock()
 				prevLogIndex, prevLogTerm := rf.getPrevLogInfo(server)
 				entries := make([]Entry, 0, 0)
@@ -204,7 +203,7 @@ func (rf *Raft) sendHeartbeat(term int) {
 				defer rf.mu.Unlock()
 
 				// TODO: check log[server].Term == currentTerm
-				if rf.state != Leader || rf.currentTerm != term || rf.log[server].Term != term {
+				if rf.state != Leader || rf.currentTerm != term {
 					return
 				}
 				if reply.Term > rf.currentTerm {
@@ -214,14 +213,13 @@ func (rf *Raft) sendHeartbeat(term int) {
 					return
 				}
 				if reply.Success {
-					// TODO: update nextIndex and matchIndex
 					rf.nextIndex[server] = rf.getLastLogIndex() + 1
 					rf.matchIndex[server] = prevLogIndex + len(entries)
 				} else {
 					rf.nextIndex[server]--
 				}
-				// TODO: update commitIndex
-				// TODO: apply commit
+				rf.updateCommitIndex(term)
+				rf.apply()
 			} else {
 				rf.mu.Lock()
 				args := AppendEntriesArgs{
@@ -249,6 +247,27 @@ func (rf *Raft) sendHeartbeat(term int) {
 				}
 			}
 		}(server)
+	}
+}
+
+func (rf *Raft) updateCommitIndex(term int) {
+	// If there exists an N such that N > commitIndex, a majority
+	// of matchIndex[i] ≥ N, and log[N].term == currentTerm:
+	// set commitIndex = N
+	for N := rf.commitIndex + 1; N <= rf.getLastLogIndex(); N++ {
+		if rf.log[N].Term != term {
+			continue
+		}
+		count := 0
+		for i := 0; i < len(rf.matchIndex); i++ {
+			if i != rf.me && rf.matchIndex[i] >= N {
+				count++
+			}
+			if count > len(rf.matchIndex)/2 {
+				rf.commitIndex = N
+				return
+			}
+		}
 	}
 }
 
@@ -402,13 +421,28 @@ func (rf *Raft) heartbeatTicker() {
 	}
 }
 
+func (rf *Raft) apply() {
+	rf.applyCond.Broadcast()
+}
+
 func (rf *Raft) applier() {
-	rf.mu.Lock()
-	for _ = range rf.applyCh {
-		// TODO: conditional wait.
-		rf.applyCond.Wait()
+	for rf.killed() {
+		rf.mu.Lock()
+		if rf.commitIndex > rf.lastApplied && rf.getLastLogIndex() > rf.lastApplied {
+			rf.lastApplied++
+			applyMsg := ApplyMsg{
+				CommandValid: true,
+				Command:      rf.log[rf.lastApplied].Command,
+				CommandIndex: rf.lastApplied,
+			}
+			rf.mu.Unlock()
+			rf.applyCh <- applyMsg
+			rf.mu.Lock()
+		} else {
+			rf.applyCond.Wait()
+		}
+		rf.mu.Unlock()
 	}
-	rf.mu.Unlock()
 }
 
 //
@@ -439,6 +473,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 		nextIndex:     make([]int, len(peers), len(peers)),
 		matchIndex:    make([]int, len(peers), len(peers)),
 	}
+	rf.applyCond = sync.NewCond(&rf.mu)
 
 	// Your initialization code here (2A, 2B, 2C).
 
@@ -447,6 +482,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 
 	go rf.electionTicker()
 	go rf.heartbeatTicker()
+	go rf.applier()
 
 	return rf
 }

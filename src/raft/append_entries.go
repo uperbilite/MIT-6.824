@@ -62,7 +62,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		rf.state = Follower
 		rf.currentTerm, rf.votedFor = biggerTerm, -1
 	}
-	// TODO: apply commit
+	rf.apply()
 
 	// stay follower in response to heartbeat or append entries
 	rf.state = Follower

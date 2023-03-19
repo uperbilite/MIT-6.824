@@ -94,6 +94,10 @@ func DebugELT(s, term int) {
 	Debug(dTimer, "S%d Start Election for T%d", s, term)
 }
 
+func DebugHB(s, term int) {
+	Debug(dTimer, "S%d Start Heartbeat for T%d", s, term)
+}
+
 // receive heartbeat
 func DebugReceiveHB(s1, s2, term int) {
 	Debug(dTimer, "S%d <-HB-< S%d at T%d", s1, s2, term)

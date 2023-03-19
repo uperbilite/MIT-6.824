@@ -77,6 +77,7 @@ type Raft struct {
 	state         State
 	lastResetTime time.Time
 	applyCh       chan ApplyMsg
+	applyCond     sync.Cond
 
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
@@ -312,10 +313,20 @@ func (rf *Raft) heartbeatTicker() {
 		rf.mu.Lock()
 		if rf.state == Leader {
 			rf.lastResetTime = time.Now()
+			DebugHB(rf.me, rf.currentTerm)
 			rf.SendHeartbeat(rf.currentTerm)
 		}
 		rf.mu.Unlock()
 	}
+}
+
+func (rf *Raft) applier() {
+	rf.mu.Lock()
+	for _ = range rf.applyCh {
+		// TODO: conditional wait.
+		rf.applyCond.Wait()
+	}
+	rf.mu.Unlock()
 }
 
 //

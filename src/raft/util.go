@@ -129,7 +129,7 @@ func GetRandomTimeout() int {
 
 func min(a, b int) int {
 	if a < b {
-		return b
+		return a
 	}
 	return b
 }

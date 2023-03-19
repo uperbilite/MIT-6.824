@@ -104,6 +104,10 @@ func (rf *Raft) GetState() (int, bool) {
 	return term, isLeader
 }
 
+func (rf *Raft) isLeader() bool {
+	return rf.state == Leader
+}
+
 func (rf *Raft) getLastTerm() int {
 	return rf.log[len(rf.log)-1].Term
 }
@@ -264,13 +268,25 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	index := len(rf.log)
-	term, isLeader := rf.GetState()
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 
-	// Your code here (2B).
-	go rf.sendHeartbeat(term)
+	if rf.killed() {
+		return -1, -1, false
+	}
+	if !rf.isLeader() {
+		return -1, -1, false
+	}
 
-	return index, term, isLeader
+	rf.log = append(rf.log, Entry{
+		Index:   rf.getLastIndex() + 1,
+		Term:    rf.currentTerm,
+		Command: command,
+	})
+
+	go rf.sendHeartbeat(rf.currentTerm)
+
+	return rf.getLastIndex(), rf.currentTerm, true
 }
 
 //
@@ -360,7 +376,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 		applyCh:       applyCh,
 		currentTerm:   0,
 		votedFor:      -1,
-		log:           nil,
+		log:           make([]Entry, 1, 1),
 		commitIndex:   0,
 		lastApplied:   0,
 		nextIndex:     nil,

@@ -27,7 +27,7 @@ func (rf *Raft) hasPrevLog(prevLogIndex, prevLogTerm int) bool {
 	return false
 }
 
-func (rf *Raft) delConflictEntries(entries []Entry) {
+func (rf *Raft) delConflictLog(entries []Entry) {
 	if rf.log[entries[0].Index].Term != entries[0].Term {
 		rf.log = rf.log[:entries[0].Index]
 	}
@@ -51,17 +51,18 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 	// not heartbeat, delete conflict log and append entries
 	if len(args.Entries) != 0 {
-		rf.delConflictEntries(args.Entries)
+		rf.delConflictLog(args.Entries)
 		rf.log = append(rf.log, args.Entries...)
 	}
 	if args.LeaderCommit > rf.commitIndex {
-		rf.commitIndex = min(args.LeaderCommit, rf.log[len(rf.log)-1].Index)
+		rf.commitIndex = min(args.LeaderCommit, rf.getLastLogIndex())
 	}
 	if args.Term > rf.currentTerm {
 		DebugToFollower(rf, biggerTerm)
 		rf.state = Follower
 		rf.currentTerm, rf.votedFor = biggerTerm, -1
 	}
+	// TODO: apply commit
 
 	// stay follower in response to heartbeat or append entries
 	rf.state = Follower

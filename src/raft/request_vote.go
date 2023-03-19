@@ -23,8 +23,8 @@ type RequestVoteReply struct {
 // compare receiver's log to candidate's. if candidate’s log is at
 // least as up-to-date as receiver’s log, return true.
 func (rf *Raft) isLogUpToDate(term int, index int) bool {
-	lastTerm := rf.getLastTerm()
-	lastIndex := rf.getLastIndex()
+	lastTerm := rf.getLastLogTerm()
+	lastIndex := rf.getLastLogIndex()
 	return term > lastTerm || (term == lastTerm && lastIndex >= index)
 }
 

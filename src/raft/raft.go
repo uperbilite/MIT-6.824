@@ -108,12 +108,17 @@ func (rf *Raft) isLeader() bool {
 	return rf.state == Leader
 }
 
-func (rf *Raft) getLastTerm() int {
+func (rf *Raft) getLastLogTerm() int {
 	return rf.log[len(rf.log)-1].Term
 }
 
-func (rf *Raft) getLastIndex() int {
+func (rf *Raft) getLastLogIndex() int {
 	return rf.log[len(rf.log)-1].Index
+}
+
+func (rf *Raft) getPrevLogInfo(server int) (int, int) {
+	prevLogIndex := rf.matchIndex[server]
+	return rf.log[prevLogIndex].Index, rf.log[prevLogIndex].Term
 }
 
 func (rf *Raft) startElection(term int) {
@@ -127,8 +132,10 @@ func (rf *Raft) startElection(term int) {
 		go func(server int) {
 			rf.mu.Lock()
 			args := RequestVoteArgs{
-				Term:        rf.currentTerm,
-				CandidateId: rf.me,
+				Term:         rf.currentTerm,
+				CandidateId:  rf.me,
+				LastLogIndex: rf.getLastLogIndex(),
+				LastLogTerm:  rf.getLastLogTerm(),
 			}
 			var reply RequestVoteReply
 			rf.mu.Unlock()
@@ -144,6 +151,12 @@ func (rf *Raft) startElection(term int) {
 			if rf.state != Candidate || rf.currentTerm != term {
 				return
 			}
+			if reply.Term > rf.currentTerm {
+				DebugToFollower(rf, reply.Term)
+				rf.state = Follower
+				rf.currentTerm, rf.votedFor = reply.Term, -1
+				return
+			}
 			if reply.VoteGranted {
 				DebugGetVote(rf.me, server, rf.currentTerm)
 				votes += 1
@@ -152,44 +165,88 @@ func (rf *Raft) startElection(term int) {
 					rf.state = Leader
 					rf.sendHeartbeat(rf.currentTerm)
 				}
-			} else if reply.Term > rf.currentTerm {
-				DebugToFollower(rf, reply.Term)
-				rf.state = Follower
-				rf.currentTerm, rf.votedFor = reply.Term, -1
+				return
 			}
 		}(server)
 	}
 }
 
 func (rf *Raft) sendHeartbeat(term int) {
+	// TODO: committed number
+
 	for server := range rf.peers {
 		if rf.me == server {
 			continue
 		}
 		go func(server int) {
-			rf.mu.Lock()
-			args := AppendEntriesArgs{
-				Term:     rf.currentTerm,
-				LeaderId: rf.me,
-			}
-			var reply AppendEntriesReply
-			DebugSendingAppendEntries(rf, server, &args)
-			rf.mu.Unlock()
+			if rf.getLastLogIndex() >= rf.nextIndex[server] {
+				// TODO: send append entries
+				rf.mu.Lock()
+				prevLogIndex, prevLogTerm := rf.getPrevLogInfo(server)
+				entries := make([]Entry, 0, 0)
+				entries = append(entries, rf.log[rf.nextIndex[server]:]...)
+				args := AppendEntriesArgs{
+					Term:         term,
+					LeaderId:     rf.me,
+					PrevLogIndex: prevLogIndex,
+					PrevLogTerm:  prevLogTerm,
+					Entries:      entries,
+					LeaderCommit: rf.commitIndex,
+				}
+				var reply AppendEntriesReply
+				rf.mu.Unlock()
 
-			if ok := rf.sendAppendEntries(server, &args, &reply); !ok {
-				return
-			}
+				if ok := rf.sendAppendEntries(server, &args, &reply); !ok {
+					return
+				}
 
-			rf.mu.Lock()
-			defer rf.mu.Unlock()
+				rf.mu.Lock()
+				defer rf.mu.Unlock()
 
-			if rf.state != Leader || rf.currentTerm != term {
-				return
-			}
-			if reply.Term > rf.currentTerm {
-				DebugToFollower(rf, reply.Term)
-				rf.state = Follower
-				rf.currentTerm, rf.votedFor = reply.Term, -1
+				// TODO: check log[server].Term == currentTerm
+				if rf.state != Leader || rf.currentTerm != term || rf.log[server].Term != term {
+					return
+				}
+				if reply.Term > rf.currentTerm {
+					DebugToFollower(rf, reply.Term)
+					rf.state = Follower
+					rf.currentTerm, rf.votedFor = reply.Term, -1
+					return
+				}
+				if reply.Success {
+					// TODO: update nextIndex and matchIndex
+					rf.nextIndex[server] = rf.getLastLogIndex() + 1
+					rf.matchIndex[server] = prevLogIndex + len(entries)
+				} else {
+					rf.nextIndex[server]--
+				}
+				// TODO: update commitIndex
+				// TODO: apply commit
+			} else {
+				rf.mu.Lock()
+				args := AppendEntriesArgs{
+					Term:     rf.currentTerm,
+					LeaderId: rf.me,
+				}
+				var reply AppendEntriesReply
+				DebugSendingAppendEntries(rf, server, &args)
+				rf.mu.Unlock()
+
+				if ok := rf.sendAppendEntries(server, &args, &reply); !ok {
+					return
+				}
+
+				rf.mu.Lock()
+				defer rf.mu.Unlock()
+
+				if rf.state != Leader || rf.currentTerm != term {
+					return
+				}
+				if reply.Term > rf.currentTerm {
+					DebugToFollower(rf, reply.Term)
+					rf.state = Follower
+					rf.currentTerm, rf.votedFor = reply.Term, -1
+				}
 			}
 		}(server)
 	}
@@ -279,14 +336,14 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 
 	rf.log = append(rf.log, Entry{
-		Index:   rf.getLastIndex() + 1,
+		Index:   rf.getLastLogIndex() + 1,
 		Term:    rf.currentTerm,
 		Command: command,
 	})
 
 	go rf.sendHeartbeat(rf.currentTerm)
 
-	return rf.getLastIndex(), rf.currentTerm, true
+	return rf.getLastLogIndex(), rf.currentTerm, true
 }
 
 //
@@ -379,8 +436,8 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 		log:           make([]Entry, 1, 1),
 		commitIndex:   0,
 		lastApplied:   0,
-		nextIndex:     nil,
-		matchIndex:    nil,
+		nextIndex:     make([]int, len(peers), len(peers)),
+		matchIndex:    make([]int, len(peers), len(peers)),
 	}
 
 	// Your initialization code here (2A, 2B, 2C).

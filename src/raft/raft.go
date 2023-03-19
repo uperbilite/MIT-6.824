@@ -161,8 +161,9 @@ func (rf *Raft) startElection(term int) {
 				DebugGetVote(rf.me, server, rf.currentTerm)
 				votes += 1
 				if votes > len(rf.peers)/2 {
-					DebugToLeader(rf.me, votes, rf.currentTerm)
+					DebugToLeader(rf, rf.currentTerm)
 					rf.state = Leader
+					DebugHB(rf.me, rf.currentTerm)
 					rf.sendHeartbeat(rf.currentTerm)
 				}
 				return
@@ -172,8 +173,6 @@ func (rf *Raft) startElection(term int) {
 }
 
 func (rf *Raft) sendHeartbeat(term int) {
-	// TODO: committed number
-
 	for server := range rf.peers {
 		if rf.me == server {
 			continue
@@ -195,6 +194,7 @@ func (rf *Raft) sendHeartbeat(term int) {
 				var reply AppendEntriesReply
 				rf.mu.Unlock()
 
+				DebugSendingAppendEntries(rf, server, &args)
 				if ok := rf.sendAppendEntries(server, &args, &reply); !ok {
 					return
 				}
@@ -202,7 +202,6 @@ func (rf *Raft) sendHeartbeat(term int) {
 				rf.mu.Lock()
 				defer rf.mu.Unlock()
 
-				// TODO: check log[server].Term == currentTerm
 				if rf.state != Leader || rf.currentTerm != term {
 					return
 				}
@@ -213,23 +212,32 @@ func (rf *Raft) sendHeartbeat(term int) {
 					return
 				}
 				if reply.Success {
+					DebugCommitSuccess(rf.me, server, term)
 					rf.nextIndex[server] = rf.getLastLogIndex() + 1
 					rf.matchIndex[server] = prevLogIndex + len(entries)
 				} else {
 					rf.nextIndex[server]--
+					if rf.nextIndex[server] < 1 {
+						rf.nextIndex[server] = 1
+					}
 				}
 				rf.updateCommitIndex(term)
-				rf.apply()
+
 			} else {
 				rf.mu.Lock()
+				prevLogIndex, prevLogTerm := rf.getPrevLogInfo(server)
 				args := AppendEntriesArgs{
-					Term:     rf.currentTerm,
-					LeaderId: rf.me,
+					Term:         rf.currentTerm,
+					LeaderId:     rf.me,
+					PrevLogIndex: prevLogIndex,
+					PrevLogTerm:  prevLogTerm,
+					Entries:      []Entry{},
+					LeaderCommit: rf.commitIndex,
 				}
 				var reply AppendEntriesReply
-				DebugSendingAppendEntries(rf, server, &args)
 				rf.mu.Unlock()
 
+				DebugSendingHB(rf.me, server, term)
 				if ok := rf.sendAppendEntries(server, &args, &reply); !ok {
 					return
 				}
@@ -264,7 +272,9 @@ func (rf *Raft) updateCommitIndex(term int) {
 				count++
 			}
 			if count > len(rf.matchIndex)/2 {
+				DebugUpdateCommitIdx(rf.me, term, rf.commitIndex, N)
 				rf.commitIndex = N
+				rf.apply()
 				return
 			}
 		}
@@ -360,6 +370,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		Command: command,
 	})
 
+	DebugCommand(rf.me, rf.currentTerm)
 	go rf.sendHeartbeat(rf.currentTerm)
 
 	return rf.getLastLogIndex(), rf.currentTerm, true
@@ -422,12 +433,15 @@ func (rf *Raft) heartbeatTicker() {
 }
 
 func (rf *Raft) apply() {
+	DebugApply(rf.me, rf.currentTerm)
 	rf.applyCond.Broadcast()
 }
 
 func (rf *Raft) applier() {
-	for rf.killed() {
-		rf.mu.Lock()
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	for rf.killed() == false {
 		if rf.commitIndex > rf.lastApplied && rf.getLastLogIndex() > rf.lastApplied {
 			rf.lastApplied++
 			applyMsg := ApplyMsg{
@@ -436,12 +450,12 @@ func (rf *Raft) applier() {
 				CommandIndex: rf.lastApplied,
 			}
 			rf.mu.Unlock()
+			DebugApplyCommit(rf.me, rf.currentTerm)
 			rf.applyCh <- applyMsg
 			rf.mu.Lock()
 		} else {
 			rf.applyCond.Wait()
 		}
-		rf.mu.Unlock()
 	}
 }
 
@@ -474,6 +488,10 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 		matchIndex:    make([]int, len(peers), len(peers)),
 	}
 	rf.applyCond = sync.NewCond(&rf.mu)
+
+	for i := 0; i < len(rf.nextIndex); i++ {
+		rf.nextIndex[i] = rf.getLastLogIndex() + 1
+	}
 
 	// Your initialization code here (2A, 2B, 2C).
 

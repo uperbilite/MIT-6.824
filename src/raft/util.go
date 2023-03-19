@@ -80,13 +80,13 @@ func DebugRequestVote(s1, s2, term int) {
 }
 
 // become to leader
-func DebugToLeader(s, num, term int) {
-	Debug(dLeader, "S%d is Leader(%d) for T%d", s, num, term)
+func DebugToLeader(rf *Raft, newTerm int) {
+	Debug(dLeader, "S%d [T%d:%s] -> [T%d:Leader]", rf.me, rf.currentTerm, rf.state, newTerm)
 }
 
 // become to follower
 func DebugToFollower(rf *Raft, newTerm int) {
-	Debug(dTrace, "S%d [%s:%d] -> [Follower:%d]", rf.me, rf.state, rf.currentTerm, newTerm)
+	Debug(dLeader, "S%d [T%d:%s] -> [T%d:Follower]", rf.me, rf.currentTerm, rf.state, newTerm)
 }
 
 // election timeout
@@ -95,16 +95,11 @@ func DebugELT(s, term int) {
 }
 
 func DebugHB(s, term int) {
-	Debug(dTimer, "S%d Start Heartbeat for T%d", s, term)
+	Debug(dTimer, "S%d Start Heartbeat at T%d", s, term)
 }
 
-// receive heartbeat
-func DebugReceiveHB(s1, s2, term int) {
-	Debug(dTimer, "S%d <-HB-< S%d at T%d", s1, s2, term)
-}
-
-func DebugGetInfo(rf *Raft) {
-	Debug(dInfo, "S%d T%d State: %s Log:%v", rf.me, rf.currentTerm, rf.state, rf.log)
+func DebugSendingHB(s1, s2, term int) {
+	Debug(dLog, "S%d >-HB-> S%d at T%d", s1, s2, term)
 }
 
 func DebugSendingAppendEntries(rf *Raft, server int, args *AppendEntriesArgs) {
@@ -113,8 +108,28 @@ func DebugSendingAppendEntries(rf *Raft, server int, args *AppendEntriesArgs) {
 		args.LeaderCommit)
 }
 
-func DebugTest(s string) {
-	Debug(dTest, s)
+func DebugCommitSuccess(s1, s2, term int) {
+	Debug(dCommit, "S%d <-CM-< S%d at T%d", s1, s2, term)
+}
+
+func DebugUpdateCommitIdx(s, term, old, new int) {
+	Debug(dCommit, "S%d T:%d CommitIdx From %d To %d", s, term, old, new)
+}
+
+func DebugApply(s, term int) {
+	Debug(dClient, "S%d T:%d Send Apply", s, term)
+}
+
+func DebugApplyCommit(s, term int) {
+	Debug(dClient, "S%d T:%d Apply Commit", s, term)
+}
+
+func DebugCommand(s, term int) {
+	Debug(dCommit, "S%d T:%d Send Command", s, term)
+}
+
+func DebugInfo(s string, a ...interface{}) {
+	Debug(dInfo, s, a...)
 }
 
 const (

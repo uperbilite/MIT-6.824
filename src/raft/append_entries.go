@@ -28,14 +28,12 @@ func (rf *Raft) hasPrevLog(prevLogIndex, prevLogTerm int) bool {
 }
 
 func (rf *Raft) delConflictLog(entries []Entry) {
-	if rf.log[entries[0].Index].Term != entries[0].Term {
+	if rf.getLastLogIndex() >= entries[0].Index && rf.log[entries[0].Index].Term != entries[0].Term {
 		rf.log = rf.log[:entries[0].Index]
 	}
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	DebugReceiveHB(rf.me, args.LeaderId, rf.currentTerm)
-
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
@@ -56,13 +54,13 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 	if args.LeaderCommit > rf.commitIndex {
 		rf.commitIndex = min(args.LeaderCommit, rf.getLastLogIndex())
+		rf.apply()
 	}
 	if args.Term > rf.currentTerm {
 		DebugToFollower(rf, biggerTerm)
 		rf.state = Follower
 		rf.currentTerm, rf.votedFor = biggerTerm, -1
 	}
-	rf.apply()
 
 	// stay follower in response to heartbeat or append entries
 	rf.state = Follower

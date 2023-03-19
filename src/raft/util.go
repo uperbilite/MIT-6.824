@@ -126,3 +126,17 @@ func GetRandomTimeout() int {
 	rand.Seed(time.Now().UnixNano())
 	return rand.Intn(ElectionTimeout) + ElectionTimeout
 }
+
+func min(a, b int) int {
+	if a < b {
+		return b
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}

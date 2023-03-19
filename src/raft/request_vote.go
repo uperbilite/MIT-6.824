@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"math"
 	"time"
 )
 
@@ -16,23 +15,24 @@ type RequestVoteArgs struct {
 	LastLogTerm  int
 }
 
-//
-// example RequestVote RPC reply structure.
-// field names must start with capital letters!
-//
 type RequestVoteReply struct {
 	Term        int
 	VoteGranted bool
 }
 
-//
-// example RequestVote RPC handler.
-//
+// compare receiver's log to candidate's. if candidate’s log is at
+// least as up-to-date as receiver’s log, return true.
+func (rf *Raft) isLogUpToDate(term int, index int) bool {
+	lastTerm := rf.getLastTerm()
+	lastIndex := rf.getLastIndex()
+	return term > lastTerm || (term == lastTerm && lastIndex >= index)
+}
+
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	biggerTerm := int(math.Max(float64(args.Term), float64(rf.currentTerm)))
+	biggerTerm := max(rf.currentTerm, args.Term)
 
 	if args.Term < rf.currentTerm {
 		reply.Term, reply.VoteGranted = biggerTerm, false
@@ -47,8 +47,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.state = Follower
 		rf.currentTerm, rf.votedFor = biggerTerm, -1
 	}
+	if !rf.isLogUpToDate(args.LastLogTerm, args.LastLogIndex) {
+		reply.Term, reply.VoteGranted = biggerTerm, false
+		return
+	}
 
-	// TODO: compare log
 	DebugGrantVote(rf.me, args.CandidateId, rf.currentTerm)
 	rf.votedFor = args.CandidateId
 	reply.Term, reply.VoteGranted = biggerTerm, true

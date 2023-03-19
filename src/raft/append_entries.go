@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"math"
 	"time"
 )
 
@@ -25,7 +24,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	biggerTerm := int(math.Max(float64(args.Term), float64(rf.currentTerm)))
+	biggerTerm := max(rf.currentTerm, args.Term)
 
 	if args.Term < rf.currentTerm {
 		reply.Term, reply.Success = biggerTerm, false

@@ -60,6 +60,7 @@ const (
 )
 
 type Entry struct {
+	Index   int
 	Term    int
 	Command interface{}
 }
@@ -103,7 +104,15 @@ func (rf *Raft) GetState() (int, bool) {
 	return term, isLeader
 }
 
-func (rf *Raft) StartElection(term int) {
+func (rf *Raft) getLastTerm() int {
+	return rf.log[len(rf.log)-1].Term
+}
+
+func (rf *Raft) getLastIndex() int {
+	return rf.log[len(rf.log)-1].Index
+}
+
+func (rf *Raft) startElection(term int) {
 	rf.votedFor = rf.me
 	votes := 1
 
@@ -137,7 +146,7 @@ func (rf *Raft) StartElection(term int) {
 				if votes > len(rf.peers)/2 {
 					DebugToLeader(rf.me, votes, rf.currentTerm)
 					rf.state = Leader
-					rf.SendHeartbeat(rf.currentTerm)
+					rf.sendHeartbeat(rf.currentTerm)
 				}
 			} else if reply.Term > rf.currentTerm {
 				DebugToFollower(rf, reply.Term)
@@ -148,7 +157,7 @@ func (rf *Raft) StartElection(term int) {
 	}
 }
 
-func (rf *Raft) SendHeartbeat(term int) {
+func (rf *Raft) sendHeartbeat(term int) {
 	for server := range rf.peers {
 		if rf.me == server {
 			continue
@@ -255,11 +264,11 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	index := -1
-	term := -1
-	isLeader := true
+	index := len(rf.log)
+	term, isLeader := rf.GetState()
 
 	// Your code here (2B).
+	go rf.sendHeartbeat(term)
 
 	return index, term, isLeader
 }
@@ -301,7 +310,7 @@ func (rf *Raft) electionTicker() {
 			rf.currentTerm += 1
 			rf.lastResetTime = time.Now()
 			DebugELT(rf.me, rf.currentTerm)
-			rf.StartElection(rf.currentTerm)
+			rf.startElection(rf.currentTerm)
 		}
 		rf.mu.Unlock()
 	}
@@ -314,7 +323,7 @@ func (rf *Raft) heartbeatTicker() {
 		if rf.state == Leader {
 			rf.lastResetTime = time.Now()
 			DebugHB(rf.me, rf.currentTerm)
-			rf.SendHeartbeat(rf.currentTerm)
+			rf.sendHeartbeat(rf.currentTerm)
 		}
 		rf.mu.Unlock()
 	}

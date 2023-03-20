@@ -188,82 +188,52 @@ func (rf *Raft) sendHeartbeat(term int) {
 			continue
 		}
 		go func(server int) {
+			rf.mu.Lock()
+			var args AppendEntriesArgs
+			var reply AppendEntriesReply
+			prevLogIndex, prevLogTerm := rf.getPrevLogInfo(server)
+			args = AppendEntriesArgs{
+				Term:         term,
+				LeaderId:     rf.me,
+				PrevLogIndex: prevLogIndex,
+				PrevLogTerm:  prevLogTerm,
+				Entries:      []Entry{},
+				LeaderCommit: rf.commitIndex,
+			}
+			// not heartbeat
 			if rf.getLastLogIndex() >= rf.nextIndex[server] {
-				rf.mu.Lock()
-				prevLogIndex, prevLogTerm := rf.getPrevLogInfo(server)
-				entries := make([]Entry, 0, 0)
-				entries = append(entries, rf.log[rf.nextIndex[server]:]...)
-				args := AppendEntriesArgs{
-					Term:         term,
-					LeaderId:     rf.me,
-					PrevLogIndex: prevLogIndex,
-					PrevLogTerm:  prevLogTerm,
-					Entries:      entries,
-					LeaderCommit: rf.commitIndex,
-				}
-				var reply AppendEntriesReply
-				rf.mu.Unlock()
+				args.Entries = append(args.Entries, rf.log[rf.nextIndex[server]:]...)
+			}
+			rf.mu.Unlock()
 
-				DebugSendingAppendEntries(rf, server, &args)
-				if ok := rf.sendAppendEntries(server, &args, &reply); !ok {
-					return
-				}
+			DebugSendingAppendEntries(rf, server, &args)
+			if ok := rf.sendAppendEntries(server, &args, &reply); !ok {
+				return
+			}
 
-				rf.mu.Lock()
-				defer rf.mu.Unlock()
+			rf.mu.Lock()
+			defer rf.mu.Unlock()
 
-				if rf.state != Leader || rf.currentTerm != term {
-					return
-				}
-				if reply.Term > rf.currentTerm {
-					DebugToFollower(rf, reply.Term)
-					rf.state = Follower
-					rf.currentTerm, rf.votedFor = reply.Term, -1
-					return
-				}
-				if reply.Success {
-					DebugCommitSuccess(rf.me, server, term)
-					rf.matchIndex[server] = prevLogIndex + len(args.Entries)
-					rf.nextIndex[server] = rf.matchIndex[server] + 1
-				} else {
-					rf.nextIndex[server]--
-					if rf.nextIndex[server] < 1 {
-						rf.nextIndex[server] = 1
-					}
-				}
-				rf.updateCommitIndex(term)
-
+			if rf.state != Leader || rf.currentTerm != term {
+				return
+			}
+			if reply.Term > rf.currentTerm {
+				DebugToFollower(rf, reply.Term)
+				rf.state = Follower
+				rf.currentTerm, rf.votedFor = reply.Term, -1
+				return
+			}
+			if reply.Success {
+				DebugCommitSuccess(rf.me, server, term)
+				rf.matchIndex[server] = args.PrevLogIndex + len(args.Entries)
+				rf.nextIndex[server] = rf.matchIndex[server] + 1
 			} else {
-				rf.mu.Lock()
-				prevLogIndex, prevLogTerm := rf.getPrevLogInfo(server)
-				args := AppendEntriesArgs{
-					Term:         rf.currentTerm,
-					LeaderId:     rf.me,
-					PrevLogIndex: prevLogIndex,
-					PrevLogTerm:  prevLogTerm,
-					Entries:      []Entry{},
-					LeaderCommit: rf.commitIndex,
-				}
-				var reply AppendEntriesReply
-				rf.mu.Unlock()
-
-				DebugSendingHB(rf.me, server, term)
-				if ok := rf.sendAppendEntries(server, &args, &reply); !ok {
-					return
-				}
-
-				rf.mu.Lock()
-				defer rf.mu.Unlock()
-
-				if rf.state != Leader || rf.currentTerm != term {
-					return
-				}
-				if reply.Term > rf.currentTerm {
-					DebugToFollower(rf, reply.Term)
-					rf.state = Follower
-					rf.currentTerm, rf.votedFor = reply.Term, -1
+				rf.nextIndex[server]--
+				if rf.nextIndex[server] < 1 {
+					rf.nextIndex[server] = 1
 				}
 			}
+			rf.updateCommitIndex(term)
 		}(server)
 	}
 }

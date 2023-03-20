@@ -27,12 +27,6 @@ func (rf *Raft) hasPrevLog(prevLogIndex, prevLogTerm int) bool {
 	return false
 }
 
-func (rf *Raft) delConflictLog(entries []Entry) {
-	if rf.getLastLogIndex() >= entries[0].Index && rf.log[entries[0].Index].Term != entries[0].Term {
-		rf.log = rf.log[:entries[0].Index]
-	}
-}
-
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -49,8 +43,13 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 	// not heartbeat, delete conflict log and append entries
 	if len(args.Entries) != 0 {
-		rf.delConflictLog(args.Entries)
-		rf.log = append(rf.log, args.Entries...)
+		firstIndex := rf.getFirstLogIndex()
+		for index, entry := range args.Entries {
+			if entry.Index-firstIndex >= len(rf.log) || rf.log[entry.Index-firstIndex].Term != entry.Term {
+				rf.log = append(rf.log[:entry.Index-firstIndex], args.Entries[index:]...)
+				break
+			}
+		}
 	}
 	if args.LeaderCommit > rf.commitIndex {
 		rf.commitIndex = min(args.LeaderCommit, rf.getLastLogIndex())

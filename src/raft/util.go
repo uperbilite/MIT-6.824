@@ -103,9 +103,9 @@ func DebugSendingHB(s1, s2, term int) {
 }
 
 func DebugSendingAppendEntries(rf *Raft, server int, args *AppendEntriesArgs) {
-	Debug(dLog, "S%d T:%d -> S%d Sending PLI: %d PLT: %d LC: %d ",
+	Debug(dLog, "S%d T:%d -> S%d Sending PLI: %d PLT: %d LC: %d LOG: %v",
 		rf.me, rf.currentTerm, server, args.PrevLogIndex, args.PrevLogTerm,
-		args.LeaderCommit)
+		args.LeaderCommit, args.Entries)
 }
 
 func DebugCommitSuccess(s1, s2, term int) {
@@ -116,16 +116,16 @@ func DebugUpdateCommitIdx(s, term, old, new int) {
 	Debug(dCommit, "S%d T:%d CommitIdx From %d To %d", s, term, old, new)
 }
 
-func DebugApply(s, term int) {
-	Debug(dClient, "S%d T:%d Send Apply", s, term)
+func DebugApply(s, term int, log []Entry) {
+	Debug(dClient, "S%d T:%d Send Apply, log: %v", s, term, log)
 }
 
-func DebugApplyCommit(s, term int) {
-	Debug(dClient, "S%d T:%d Apply Commit", s, term)
+func DebugApplyCommit(s, term int, log []Entry) {
+	Debug(dClient, "S%d T:%d Apply Commit, log: %v", s, term, log)
 }
 
-func DebugCommand(s, term int) {
-	Debug(dCommit, "S%d T:%d Send Command", s, term)
+func DebugCommand(s, term int, log []Entry) {
+	Debug(dCommit, "S%d T:%d Send Command, log: %v", s, term, log)
 }
 
 func DebugInfo(s string, a ...interface{}) {

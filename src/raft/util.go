@@ -102,6 +102,10 @@ func DebugSendingHB(s1, s2, term int) {
 	Debug(dLog, "S%d >-HB-> S%d at T%d", s1, s2, term)
 }
 
+func DebugReceiveHB(s1, s2, term int) {
+	Debug(dLog, "S%d <-HB-< S%d at T%d", s1, s2, term)
+}
+
 func DebugSendingAppendEntries(rf *Raft, server int, args *AppendEntriesArgs) {
 	Debug(dLog, "S%d T:%d -> S%d Sending PLI: %d PLT: %d LC: %d LOG: %v",
 		rf.me, rf.currentTerm, server, args.PrevLogIndex, args.PrevLogTerm,
@@ -117,7 +121,7 @@ func DebugUpdateCommitIdx(s, term, old, new int) {
 }
 
 func DebugApply(s, term int, log []Entry) {
-	Debug(dClient, "S%d T:%d Send Apply, log: %v", s, term, log)
+	Debug(dClient, "S%d T:%d Apply Request, log: %v", s, term, log)
 }
 
 func DebugApplyCommit(s, term int, log []Entry) {
@@ -125,7 +129,7 @@ func DebugApplyCommit(s, term int, log []Entry) {
 }
 
 func DebugCommand(s, term int, log []Entry) {
-	Debug(dCommit, "S%d T:%d Send Command, log: %v", s, term, log)
+	Debug(dCommit, "S%d T:%d Receive Command, log: %v", s, term, log)
 }
 
 func DebugInfo(s string, a ...interface{}) {

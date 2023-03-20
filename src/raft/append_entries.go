@@ -1,8 +1,6 @@
 package raft
 
-import (
-	"time"
-)
+import "time"
 
 type AppendEntriesArgs struct {
 	Term         int
@@ -63,9 +61,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	// stay follower in response to heartbeat or append entries
 	rf.state = Follower
-	rf.lastResetTime = time.Now()
-
 	reply.Term, reply.Success = biggerTerm, true
+
+	rf.lastResetTime = time.Now()
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {

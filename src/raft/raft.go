@@ -223,8 +223,8 @@ func (rf *Raft) sendHeartbeat(term int) {
 				}
 				if reply.Success {
 					DebugCommitSuccess(rf.me, server, term)
-					rf.nextIndex[server] = rf.getLastLogIndex() + 1
 					rf.matchIndex[server] = prevLogIndex + len(entries)
+					rf.nextIndex[server] = rf.matchIndex[server] + 1
 				} else {
 					rf.nextIndex[server]--
 					if rf.nextIndex[server] < 1 {
@@ -285,7 +285,6 @@ func (rf *Raft) updateCommitIndex(term int) {
 				DebugUpdateCommitIdx(rf.me, term, rf.commitIndex, N)
 				rf.commitIndex = N
 				rf.apply()
-				return
 			}
 		}
 	}

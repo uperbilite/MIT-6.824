@@ -25,7 +25,7 @@ type RequestVoteReply struct {
 func (rf *Raft) isLogUpToDate(term int, index int) bool {
 	lastTerm := rf.getLastLogTerm()
 	lastIndex := rf.getLastLogIndex()
-	return term > lastTerm || (term == lastTerm && lastIndex >= index)
+	return term > lastTerm || (term == lastTerm && index >= lastIndex)
 }
 
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {

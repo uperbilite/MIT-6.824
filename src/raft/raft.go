@@ -108,6 +108,14 @@ func (rf *Raft) isLeader() bool {
 	return rf.state == Leader
 }
 
+func (rf *Raft) getFirstLogTerm() int {
+	return rf.log[0].Term
+}
+
+func (rf *Raft) getFirstLogIndex() int {
+	return rf.log[0].Index
+}
+
 func (rf *Raft) getLastLogTerm() int {
 	return rf.log[len(rf.log)-1].Term
 }
@@ -122,6 +130,7 @@ func (rf *Raft) getPrevLogInfo(server int) (int, int) {
 }
 
 func (rf *Raft) startElection(term int) {
+	rf.lastResetTime = time.Now()
 	rf.votedFor = rf.me
 	votes := 1
 
@@ -173,6 +182,7 @@ func (rf *Raft) startElection(term int) {
 }
 
 func (rf *Raft) sendHeartbeat(term int) {
+	rf.lastResetTime = time.Now()
 	for server := range rf.peers {
 		if rf.me == server {
 			continue
@@ -266,7 +276,7 @@ func (rf *Raft) updateCommitIndex(term int) {
 		if rf.log[N].Term != term {
 			continue
 		}
-		count := 0
+		count := 1
 		for i := 0; i < len(rf.matchIndex); i++ {
 			if i != rf.me && rf.matchIndex[i] >= N {
 				count++
@@ -370,7 +380,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		Command: command,
 	})
 
-	DebugCommand(rf.me, rf.currentTerm)
+	DebugCommand(rf.me, rf.currentTerm, rf.log)
 	go rf.sendHeartbeat(rf.currentTerm)
 
 	return rf.getLastLogIndex(), rf.currentTerm, true
@@ -411,7 +421,6 @@ func (rf *Raft) electionTicker() {
 		if nowTime.After(rf.lastResetTime) && rf.state != Leader {
 			rf.state = Candidate
 			rf.currentTerm += 1
-			rf.lastResetTime = time.Now()
 			DebugELT(rf.me, rf.currentTerm)
 			rf.startElection(rf.currentTerm)
 		}
@@ -424,7 +433,6 @@ func (rf *Raft) heartbeatTicker() {
 		time.Sleep(HeartbeatTimeout * time.Millisecond)
 		rf.mu.Lock()
 		if rf.state == Leader {
-			rf.lastResetTime = time.Now()
 			DebugHB(rf.me, rf.currentTerm)
 			rf.sendHeartbeat(rf.currentTerm)
 		}
@@ -433,7 +441,7 @@ func (rf *Raft) heartbeatTicker() {
 }
 
 func (rf *Raft) apply() {
-	DebugApply(rf.me, rf.currentTerm)
+	DebugApply(rf.me, rf.currentTerm, rf.log)
 	rf.applyCond.Broadcast()
 }
 
@@ -450,7 +458,7 @@ func (rf *Raft) applier() {
 				CommandIndex: rf.lastApplied,
 			}
 			rf.mu.Unlock()
-			DebugApplyCommit(rf.me, rf.currentTerm)
+			DebugApplyCommit(rf.me, rf.currentTerm, rf.log)
 			rf.applyCh <- applyMsg
 			rf.mu.Lock()
 		} else {

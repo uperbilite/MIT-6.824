@@ -126,6 +126,9 @@ func (rf *Raft) getLastLogIndex() int {
 
 func (rf *Raft) getPrevLogInfo(server int) (int, int) {
 	prevLogIndex := rf.nextIndex[server] - 1
+	if prevLogIndex >= len(rf.log) {
+		prevLogIndex = rf.getLastLogIndex()
+	}
 	return rf.log[prevLogIndex].Index, rf.log[prevLogIndex].Term
 }
 

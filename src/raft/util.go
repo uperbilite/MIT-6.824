@@ -112,8 +112,8 @@ func DebugSendingAppendEntries(rf *Raft, server int, args *AppendEntriesArgs) {
 		args.LeaderCommit, args.Entries)
 }
 
-func DebugCommitSuccess(s1, s2, term int) {
-	Debug(dCommit, "S%d <-CM-< S%d at T%d", s1, s2, term)
+func DebugCommitSuccess(s1, s2, term, a, b int) {
+	Debug(dCommit, "S%d <-CM-< S%d at T%d nextIndex: matchIndex", s1, s2, term, a, b)
 }
 
 func DebugUpdateCommitIdx(s, term, old, new int) {
@@ -138,7 +138,7 @@ func DebugInfo(s string, a ...interface{}) {
 
 const (
 	ElectionTimeout  = 150
-	HeartbeatTimeout = 50
+	HeartbeatTimeout = 100
 )
 
 func GetRandomTimeout() int {

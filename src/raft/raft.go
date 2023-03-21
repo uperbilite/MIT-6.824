@@ -125,7 +125,7 @@ func (rf *Raft) getLastLogIndex() int {
 }
 
 func (rf *Raft) getPrevLogInfo(server int) (int, int) {
-	prevLogIndex := rf.matchIndex[server]
+	prevLogIndex := rf.nextIndex[server] - 1
 	return rf.log[prevLogIndex].Index, rf.log[prevLogIndex].Term
 }
 
@@ -164,6 +164,7 @@ func (rf *Raft) startElection(term int) {
 				DebugToFollower(rf, reply.Term)
 				rf.state = Follower
 				rf.currentTerm, rf.votedFor = reply.Term, -1
+				rf.persist()
 				return
 			}
 			if reply.VoteGranted {
@@ -221,21 +222,22 @@ func (rf *Raft) sendHeartbeat(term int) {
 				DebugToFollower(rf, reply.Term)
 				rf.state = Follower
 				rf.currentTerm, rf.votedFor = reply.Term, -1
+				rf.persist()
 				return
 			}
 			if reply.Success {
-				DebugCommitSuccess(rf.me, server, term)
 				rf.matchIndex[server] = args.PrevLogIndex + len(args.Entries)
 				rf.nextIndex[server] = rf.matchIndex[server] + 1
+				DebugCommitSuccess(rf.me, server, term, rf.matchIndex[server], rf.nextIndex[server])
 			} else {
 				rf.nextIndex[server]--
 				if rf.nextIndex[server] < 1 {
 					rf.nextIndex[server] = 1
 				}
 			}
-			rf.updateCommitIndex(term)
 		}(server)
 	}
+	rf.updateCommitIndex(term)
 }
 
 func (rf *Raft) updateCommitIndex(term int) {
@@ -360,9 +362,9 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		Term:    rf.currentTerm,
 		Command: command,
 	})
+	rf.persist()
 
 	DebugCommand(rf.me, rf.currentTerm, rf.log)
-	go rf.sendHeartbeat(rf.currentTerm)
 
 	return rf.getLastLogIndex(), rf.currentTerm, true
 }
@@ -480,8 +482,9 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
-	for i := 0; i < len(rf.nextIndex); i++ {
+	for i := 0; i < len(rf.peers); i++ {
 		rf.nextIndex[i] = rf.getLastLogIndex() + 1
+		rf.matchIndex[i] = 0
 	}
 
 	go rf.electionTicker()

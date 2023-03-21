@@ -34,19 +34,22 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	biggerTerm := max(rf.currentTerm, args.Term)
 
-	if args.Term < rf.currentTerm {
-		reply.Term, reply.VoteGranted = biggerTerm, false
-		return
-	}
-	if args.Term == rf.currentTerm && rf.votedFor != -1 && rf.votedFor != args.CandidateId {
-		reply.Term, reply.VoteGranted = biggerTerm, false
-		return
-	}
 	if args.Term > rf.currentTerm {
 		DebugToFollower(rf, biggerTerm)
 		rf.state = Follower
 		rf.currentTerm, rf.votedFor = biggerTerm, -1
+		rf.persist()
 	}
+
+	if args.Term < rf.currentTerm {
+		reply.Term, reply.VoteGranted = biggerTerm, false
+		return
+	}
+	if rf.votedFor != -1 && rf.votedFor != args.CandidateId {
+		reply.Term, reply.VoteGranted = biggerTerm, false
+		return
+	}
+
 	if !rf.isLogUpToDate(args.LastLogTerm, args.LastLogIndex) {
 		reply.Term, reply.VoteGranted = biggerTerm, false
 		return
@@ -57,6 +60,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.Term, reply.VoteGranted = biggerTerm, true
 
 	rf.lastResetTime = time.Now()
+	rf.persist()
 }
 
 //
@@ -89,6 +93,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // the struct itself.
 //
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
+	rf.persist()
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	return ok
 }

@@ -1,5 +1,13 @@
 package raft
 
+import (
+	"sync/atomic"
+	"time"
+
+	"github.com/uperbilite/MIT-6.824/labrpc"
+	"sync"
+)
+
 //
 // this is an outline of the API that raft must expose to
 // the service (or tester). see comments below for
@@ -16,40 +24,6 @@ package raft
 //   should send an ApplyMsg to the service (or tester)
 //   in the same server.
 //
-
-import (
-	"bytes"
-	"github.com/uperbilite/MIT-6.824/labgob"
-	"time"
-
-	"sync"
-	"sync/atomic"
-
-	"github.com/uperbilite/MIT-6.824/labrpc"
-)
-
-//
-// as each Raft peer becomes aware that successive log entries are
-// committed, the peer should send an ApplyMsg to the service (or
-// tester) on the same server, via the applyCh passed to Make(). set
-// CommandValid to true to indicate that the ApplyMsg contains a newly
-// committed log entry.
-//
-// in part 2D you'll want to send other kinds of messages (e.g.,
-// snapshots) on the applyCh, but set CommandValid to false for these
-// other uses.
-//
-type ApplyMsg struct {
-	CommandValid bool
-	Command      interface{}
-	CommandIndex int
-
-	// For 2D:
-	SnapshotValid bool
-	Snapshot      []byte
-	SnapshotTerm  int
-	SnapshotIndex int
-}
 
 type State string
 
@@ -104,235 +78,25 @@ func (rf *Raft) GetState() (int, bool) {
 	return term, isLeader
 }
 
-func (rf *Raft) isLeader() bool {
-	return rf.state == Leader
-}
-
-func (rf *Raft) getFirstLogTerm() int {
-	return rf.log[0].Term
-}
-
-func (rf *Raft) getFirstLogIndex() int {
-	return rf.log[0].Index
-}
-
-func (rf *Raft) getLastLogTerm() int {
-	return rf.log[len(rf.log)-1].Term
-}
-
-func (rf *Raft) getLastLogIndex() int {
-	return rf.log[len(rf.log)-1].Index
-}
-
-func (rf *Raft) getPrevLogInfo(server int) (int, int) {
-	prevLogIndex := rf.nextIndex[server] - 1
-	if prevLogIndex >= len(rf.log) {
-		prevLogIndex = rf.getLastLogIndex()
-	}
-	return rf.log[prevLogIndex].Index, rf.log[prevLogIndex].Term
-}
-
-func (rf *Raft) startElection(term int) {
-	rf.lastResetTime = time.Now()
-	rf.votedFor = rf.me
-	votes := 1
-
-	for server := range rf.peers {
-		if rf.me == server {
-			continue
-		}
-		go func(server int) {
-			rf.mu.Lock()
-			args := RequestVoteArgs{
-				Term:         rf.currentTerm,
-				CandidateId:  rf.me,
-				LastLogIndex: rf.getLastLogIndex(),
-				LastLogTerm:  rf.getLastLogTerm(),
-			}
-			var reply RequestVoteReply
-			rf.mu.Unlock()
-
-			DebugRequestVote(rf.me, server, rf.currentTerm)
-			if ok := rf.sendRequestVote(server, &args, &reply); !ok {
-				return
-			}
-
-			rf.mu.Lock()
-			defer rf.mu.Unlock()
-
-			if rf.state != Candidate || rf.currentTerm != term {
-				return
-			}
-			if reply.Term > rf.currentTerm {
-				DebugToFollower(rf, reply.Term)
-				rf.state = Follower
-				rf.currentTerm, rf.votedFor = reply.Term, -1
-				rf.persist()
-				return
-			}
-			if reply.VoteGranted {
-				DebugGetVote(rf.me, server, rf.currentTerm)
-				votes += 1
-				if votes > len(rf.peers)/2 {
-					DebugToLeader(rf, rf.currentTerm)
-					rf.state = Leader
-					DebugHB(rf.me, rf.currentTerm)
-					rf.sendHeartbeat(rf.currentTerm)
-				}
-				return
-			}
-		}(server)
-	}
-}
-
-func (rf *Raft) sendHeartbeat(term int) {
-	rf.lastResetTime = time.Now()
-	for server := range rf.peers {
-		if rf.me == server {
-			continue
-		}
-		go func(server int) {
-			rf.mu.Lock()
-			var args AppendEntriesArgs
-			var reply AppendEntriesReply
-			prevLogIndex, prevLogTerm := rf.getPrevLogInfo(server)
-			args = AppendEntriesArgs{
-				Term:         term,
-				LeaderId:     rf.me,
-				PrevLogIndex: prevLogIndex,
-				PrevLogTerm:  prevLogTerm,
-				Entries:      []Entry{},
-				LeaderCommit: rf.commitIndex,
-			}
-			// not heartbeat
-			if rf.getLastLogIndex() >= rf.nextIndex[server] {
-				args.Entries = append(args.Entries, rf.log[rf.nextIndex[server]:]...)
-			}
-			rf.mu.Unlock()
-
-			DebugSendingAppendEntries(rf, server, &args)
-			if ok := rf.sendAppendEntries(server, &args, &reply); !ok {
-				return
-			}
-
-			rf.mu.Lock()
-			defer rf.mu.Unlock()
-
-			if rf.state != Leader || rf.currentTerm != term {
-				return
-			}
-			if reply.Term > rf.currentTerm {
-				DebugToFollower(rf, reply.Term)
-				rf.state = Follower
-				rf.currentTerm, rf.votedFor = reply.Term, -1
-				rf.persist()
-				return
-			}
-			if reply.Success {
-				rf.matchIndex[server] = args.PrevLogIndex + len(args.Entries)
-				rf.nextIndex[server] = rf.matchIndex[server] + 1
-				DebugCommitSuccess(rf.me, server, term, rf.matchIndex[server], rf.nextIndex[server])
-			} else {
-				rf.nextIndex[server]--
-				if rf.nextIndex[server] < 1 {
-					rf.nextIndex[server] = 1
-				}
-			}
-		}(server)
-	}
-	rf.updateCommitIndex(term)
-}
-
-func (rf *Raft) updateCommitIndex(term int) {
-	// If there exists an N such that N > commitIndex, a majority
-	// of matchIndex[i] ≥ N, and log[N].term == currentTerm:
-	// set commitIndex = N
-	for N := rf.commitIndex + 1; N <= rf.getLastLogIndex(); N++ {
-		if rf.log[N].Term != term {
-			continue
-		}
-		count := 1
-		for i := 0; i < len(rf.matchIndex); i++ {
-			if i != rf.me && rf.matchIndex[i] >= N {
-				count++
-			}
-			if count > len(rf.matchIndex)/2 {
-				DebugUpdateCommitIdx(rf.me, term, rf.commitIndex, N)
-				rf.commitIndex = N
-				rf.apply()
-			}
-		}
-	}
-}
-
-func (rf *Raft) getIndexOfConflictTerm(conflictTerm int) int {
-	for i := rf.getLastLogIndex(); i > 0; i-- {
-		term := rf.log[i].Term
-		if term == conflictTerm {
-			return i
-		} else if term < conflictTerm {
-			break
-		}
-	}
-	return -1
-}
-
 //
-// save Raft's persistent state to stable storage,
-// where it can later be retrieved after a crash and restart.
-// see paper's Figure 2 for a description of what should be persistent.
+// the tester doesn't halt goroutines created by Raft after each test,
+// but it does call the Kill() method. your code can use killed() to
+// check whether Kill() has been called. the use of atomic avoids the
+// need for a lock.
 //
-func (rf *Raft) persist() {
-	w := new(bytes.Buffer)
-	e := labgob.NewEncoder(w)
-	e.Encode(rf.currentTerm)
-	e.Encode(rf.votedFor)
-	e.Encode(rf.log)
-	data := w.Bytes()
-	rf.persister.SaveRaftState(data)
+// the issue is that long-running goroutines use memory and may chew
+// up CPU time, perhaps causing later tests to fail and generating
+// confusing debug output. any goroutine with a long-running loop
+// should call killed() to check whether it should stop.
+//
+func (rf *Raft) Kill() {
+	atomic.StoreInt32(&rf.dead, 1)
+	// Your code here, if desired.
 }
 
-//
-// restore previously persisted state.
-//
-func (rf *Raft) readPersist(data []byte) {
-	if data == nil || len(data) < 1 { // bootstrap without any state?
-		return
-	}
-
-	r := bytes.NewBuffer(data)
-	d := labgob.NewDecoder(r)
-	var currentTerm int
-	var votedFor int
-	var log []Entry
-
-	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil {
-		DebugInfo("failed to load persisted state")
-	} else {
-		rf.currentTerm = currentTerm
-		rf.votedFor = votedFor
-		rf.log = log
-	}
-}
-
-//
-// A service wants to switch to snapshot.  Only do so if Raft hasn't
-// have more recent info since it communicate the snapshot on applyCh.
-//
-func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
-
-	// Your code here (2D).
-
-	return true
-}
-
-// the service says it has created a snapshot that has
-// all info up to and including index. this means the
-// service no longer needs the log through (and including)
-// that index. Raft should now trim its log as much as possible.
-func (rf *Raft) Snapshot(index int, snapshot []byte) {
-	// Your code here (2D).
-
+func (rf *Raft) killed() bool {
+	z := atomic.LoadInt32(&rf.dead)
+	return z == 1
 }
 
 //
@@ -370,87 +134,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	DebugCommand(rf.me, rf.currentTerm, rf.log)
 
 	return rf.getLastLogIndex(), rf.currentTerm, true
-}
-
-//
-// the tester doesn't halt goroutines created by Raft after each test,
-// but it does call the Kill() method. your code can use killed() to
-// check whether Kill() has been called. the use of atomic avoids the
-// need for a lock.
-//
-// the issue is that long-running goroutines use memory and may chew
-// up CPU time, perhaps causing later tests to fail and generating
-// confusing debug output. any goroutine with a long-running loop
-// should call killed() to check whether it should stop.
-//
-func (rf *Raft) Kill() {
-	atomic.StoreInt32(&rf.dead, 1)
-	// Your code here, if desired.
-}
-
-func (rf *Raft) killed() bool {
-	z := atomic.LoadInt32(&rf.dead)
-	return z == 1
-}
-
-// The electionTicker go routine starts a new election if this peer hasn't received
-// heartsbeats recently.
-func (rf *Raft) electionTicker() {
-	for rf.killed() == false {
-
-		// Your code here to check if a leader election should
-		// be started and to randomize sleeping time using
-		// time.Sleep().
-		nowTime := time.Now()
-		time.Sleep(time.Duration(GetRandomTimeout()) * time.Millisecond)
-		rf.mu.Lock()
-		if nowTime.After(rf.lastResetTime) && rf.state != Leader {
-			rf.state = Candidate
-			rf.currentTerm += 1
-			DebugELT(rf.me, rf.currentTerm)
-			rf.startElection(rf.currentTerm)
-		}
-		rf.mu.Unlock()
-	}
-}
-
-func (rf *Raft) heartbeatTicker() {
-	for rf.killed() == false {
-		time.Sleep(HeartbeatTimeout * time.Millisecond)
-		rf.mu.Lock()
-		if rf.state == Leader {
-			DebugHB(rf.me, rf.currentTerm)
-			rf.sendHeartbeat(rf.currentTerm)
-		}
-		rf.mu.Unlock()
-	}
-}
-
-func (rf *Raft) apply() {
-	DebugApply(rf.me, rf.currentTerm, rf.log)
-	rf.applyCond.Broadcast()
-}
-
-func (rf *Raft) applier() {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-
-	for rf.killed() == false {
-		if rf.commitIndex > rf.lastApplied && rf.getLastLogIndex() > rf.lastApplied {
-			rf.lastApplied++
-			applyMsg := ApplyMsg{
-				CommandValid: true,
-				Command:      rf.log[rf.lastApplied].Command,
-				CommandIndex: rf.lastApplied,
-			}
-			rf.mu.Unlock()
-			DebugApplyCommit(rf.me, rf.currentTerm, rf.log)
-			rf.applyCh <- applyMsg
-			rf.mu.Lock()
-		} else {
-			rf.applyCond.Wait()
-		}
-	}
 }
 
 //

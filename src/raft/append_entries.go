@@ -14,6 +14,9 @@ type AppendEntriesArgs struct {
 type AppendEntriesReply struct {
 	Term    int
 	Success bool
+	XTerm   int
+	XIndex  int
+	XLen    int
 }
 
 func (rf *Raft) hasPrevLog(prevLogIndex, prevLogTerm int) bool {
@@ -43,10 +46,18 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 
+	rf.state = Follower
 	rf.lastResetTime = time.Now()
 
 	if !rf.hasPrevLog(args.PrevLogIndex, args.PrevLogTerm) {
 		reply.Term, reply.Success = biggerTerm, false
+		if args.PrevLogIndex > rf.getLastLogIndex() {
+			reply.XTerm = -1
+			reply.XLen = args.PrevLogIndex - rf.getLastLogIndex()
+			return
+		}
+		reply.XTerm = rf.getLastLogTerm()
+		reply.XIndex = rf.getFirstLogIndexOfTerm(rf.getLastLogTerm())
 		return
 	}
 	// not heartbeat, delete conflict log and append entries
@@ -66,7 +77,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 
 	// stay follower in response to heartbeat or append entries
-	rf.state = Follower
 	reply.Term, reply.Success = biggerTerm, true
 
 	rf.persist()

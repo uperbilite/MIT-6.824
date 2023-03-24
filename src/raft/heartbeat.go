@@ -35,7 +35,8 @@ func (rf *Raft) sendHeartbeat(term int) {
 			}
 			// not heartbeat
 			if rf.getLastLogIndex() >= rf.nextIndex[server] {
-				args.Entries = append(args.Entries, rf.log[rf.nextIndex[server]:]...)
+				args.Entries = make([]Entry, rf.getLastLogIndex()-rf.nextIndex[server]+1)
+				copy(args.Entries, rf.log[rf.nextIndex[server]-rf.getFirstLogIndex():])
 			}
 			rf.mu.Unlock()
 
@@ -62,7 +63,15 @@ func (rf *Raft) sendHeartbeat(term int) {
 				rf.nextIndex[server] = rf.matchIndex[server] + 1
 				DebugCommitSuccess(rf.me, server, term, rf.matchIndex[server], rf.nextIndex[server])
 			} else {
-				rf.nextIndex[server]--
+				if reply.XTerm != -1 {
+					if rf.hasLogOfTerm(reply.XTerm) {
+						rf.nextIndex[server] = rf.getLastLogIndexOfTerm(reply.XTerm) + 1
+					} else {
+						rf.nextIndex[server] = reply.XIndex
+					}
+				} else {
+					rf.nextIndex[server] = rf.getLastLogIndex() - reply.XLen
+				}
 				if rf.nextIndex[server] < 1 {
 					rf.nextIndex[server] = 1
 				}

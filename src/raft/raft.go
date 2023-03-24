@@ -132,6 +132,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.persist()
 
 	DebugCommand(rf.me, rf.currentTerm, rf.log)
+	rf.sendHeartbeat(rf.currentTerm)
 
 	return rf.getLastLogIndex(), rf.currentTerm, true
 }

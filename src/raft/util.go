@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	ElectionTimeout  = 150
-	HeartbeatTimeout = 100
+	ElectionTimeout  = 300
+	HeartbeatTimeout = 50
 )
 
 func getRandomTimeout() int {
@@ -41,6 +41,34 @@ func (rf *Raft) getPrevLogInfo(server int) (int, int) {
 		prevLogIndex = rf.getLastLogIndex()
 	}
 	return rf.log[prevLogIndex].Index, rf.log[prevLogIndex].Term
+}
+
+func (rf *Raft) hasLogOfTerm(term int) bool {
+	for _, entry := range rf.log {
+		if entry.Term == term {
+			return true
+		}
+	}
+	return false
+}
+
+func (rf *Raft) getFirstLogIndexOfTerm(term int) int {
+	for index, entry := range rf.log {
+		if entry.Term == term {
+			return index
+		}
+	}
+	return -1
+}
+
+func (rf *Raft) getLastLogIndexOfTerm(term int) int {
+	var result int
+	for index, entry := range rf.log {
+		if entry.Term == term {
+			result = index
+		}
+	}
+	return result
 }
 
 func (rf *Raft) getIndexOfConflictTerm(conflictTerm int) int {

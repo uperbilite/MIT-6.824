@@ -29,23 +29,32 @@ func (rf *Raft) apply() {
 }
 
 func (rf *Raft) applier() {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-
 	for rf.killed() == false {
-		if rf.commitIndex > rf.lastApplied && rf.getLastLogIndex() > rf.lastApplied {
-			rf.lastApplied++
-			applyMsg := ApplyMsg{
-				CommandValid: true,
-				Command:      rf.log[rf.lastApplied].Command,
-				CommandIndex: rf.lastApplied,
-			}
-			rf.mu.Unlock()
-			DebugApplyCommit(rf.me, rf.currentTerm, rf.log)
-			rf.applyCh <- applyMsg
-			rf.mu.Lock()
-		} else {
+		rf.mu.Lock()
+
+		for rf.lastApplied >= rf.commitIndex {
 			rf.applyCond.Wait()
 		}
+
+		firstIndex := rf.getFirstLogIndex()
+		commitIndex := rf.commitIndex
+		lastApplied := rf.lastApplied
+		entries := make([]Entry, commitIndex-lastApplied)
+		copy(entries, rf.log[lastApplied+1-firstIndex:commitIndex+1-firstIndex])
+
+		rf.mu.Unlock()
+		DebugApplyCommit(rf.me, rf.currentTerm, rf.log)
+		for _, entry := range entries {
+			rf.applyCh <- ApplyMsg{
+				CommandValid: true,
+				Command:      entry.Command,
+				CommandIndex: entry.Index,
+			}
+		}
+		rf.mu.Lock()
+
+		rf.lastApplied = max(rf.lastApplied, commitIndex)
+
+		rf.mu.Unlock()
 	}
 }

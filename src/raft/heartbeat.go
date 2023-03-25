@@ -79,6 +79,7 @@ func (rf *Raft) sendHeartbeat(term int) {
 		}(server)
 	}
 	rf.updateCommitIndex(term)
+	rf.apply()
 }
 
 func (rf *Raft) updateCommitIndex(term int) {
@@ -97,7 +98,6 @@ func (rf *Raft) updateCommitIndex(term int) {
 			if count > len(rf.matchIndex)/2 {
 				DebugUpdateCommitIdx(rf.me, term, rf.commitIndex, N)
 				rf.commitIndex = N
-				rf.apply()
 			}
 		}
 	}

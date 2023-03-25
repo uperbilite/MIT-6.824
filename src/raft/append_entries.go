@@ -31,23 +31,27 @@ func (rf *Raft) hasPrevLog(prevLogIndex, prevLogTerm int) bool {
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	defer rf.persist()
 
 	biggerTerm := max(rf.currentTerm, args.Term)
-
-	if args.Term > rf.currentTerm {
-		DebugToFollower(rf, biggerTerm)
-		rf.state = Follower
-		rf.currentTerm, rf.votedFor = biggerTerm, -1
-		rf.persist()
-	}
 
 	if args.Term < rf.currentTerm {
 		reply.Term, reply.Success = biggerTerm, false
 		return
 	}
+	if args.Term > rf.currentTerm {
+		DebugToFollower(rf, biggerTerm)
+		rf.state = Follower
+		rf.currentTerm, rf.votedFor = biggerTerm, -1
+	}
 
 	rf.state = Follower
 	rf.lastResetTime = time.Now()
+
+	if args.PrevLogIndex < rf.getFirstLogIndex() {
+		reply.Term, reply.Success = 0, false
+		return
+	}
 
 	if !rf.hasPrevLog(args.PrevLogIndex, args.PrevLogTerm) {
 		reply.Term, reply.Success = biggerTerm, false
@@ -56,7 +60,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			reply.XLen = args.PrevLogIndex - rf.getLastLogIndex()
 			return
 		}
-		reply.XTerm = rf.getLastLogTerm()
+		firstIndex := rf.getFirstLogIndex()
+		reply.XTerm = rf.log[args.PrevLogIndex-firstIndex].Term
 		reply.XIndex = rf.getFirstLogIndexOfTerm(rf.getLastLogTerm())
 		return
 	}
@@ -66,7 +71,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		for index, entry := range args.Entries {
 			if entry.Index-firstIndex >= len(rf.log) || rf.log[entry.Index-firstIndex].Term != entry.Term {
 				rf.log = append(rf.log[:entry.Index-firstIndex], args.Entries[index:]...)
-				rf.persist()
 				break
 			}
 		}
@@ -78,8 +82,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	// stay follower in response to heartbeat or append entries
 	reply.Term, reply.Success = biggerTerm, true
-
-	rf.persist()
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {

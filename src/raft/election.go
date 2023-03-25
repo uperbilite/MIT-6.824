@@ -1,6 +1,8 @@
 package raft
 
-import "time"
+import (
+	"time"
+)
 
 // The electionTicker go routine starts a new election if this peer hasn't received
 // heartsbeats recently.
@@ -27,6 +29,7 @@ func (rf *Raft) startElection(term int) {
 	rf.lastResetTime = time.Now()
 	rf.votedFor = rf.me
 	votes := 1
+	rf.persist()
 
 	for server := range rf.peers {
 		if rf.me == server {

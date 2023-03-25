@@ -1,8 +1,6 @@
 package raft
 
-import (
-	"time"
-)
+import "time"
 
 //
 // example RequestVote RPC arguments structure.
@@ -31,25 +29,23 @@ func (rf *Raft) isLogUpToDate(term int, index int) bool {
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	defer rf.persist()
 
 	biggerTerm := max(rf.currentTerm, args.Term)
-
-	if args.Term > rf.currentTerm {
-		DebugToFollower(rf, biggerTerm)
-		rf.state = Follower
-		rf.currentTerm, rf.votedFor = biggerTerm, -1
-		rf.persist()
-	}
 
 	if args.Term < rf.currentTerm {
 		reply.Term, reply.VoteGranted = biggerTerm, false
 		return
 	}
-	if rf.votedFor != -1 && rf.votedFor != args.CandidateId {
+	if args.Term == rf.currentTerm && rf.votedFor != -1 && rf.votedFor != args.CandidateId {
 		reply.Term, reply.VoteGranted = biggerTerm, false
 		return
 	}
-
+	if args.Term > rf.currentTerm {
+		DebugToFollower(rf, biggerTerm)
+		rf.state = Follower
+		rf.currentTerm, rf.votedFor = biggerTerm, -1
+	}
 	if !rf.isLogUpToDate(args.LastLogTerm, args.LastLogIndex) {
 		reply.Term, reply.VoteGranted = biggerTerm, false
 		return
@@ -60,7 +56,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.Term, reply.VoteGranted = biggerTerm, true
 
 	rf.lastResetTime = time.Now()
-	rf.persist()
 }
 
 //

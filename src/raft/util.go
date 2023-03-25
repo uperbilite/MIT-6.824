@@ -6,13 +6,14 @@ import (
 )
 
 const (
-	ElectionTimeout  = 300
-	HeartbeatTimeout = 50
+	ElectionTimeoutStart = 800
+	ElectionTimeoutEnd   = 1200
+	HeartbeatTimeout     = 50
 )
 
 func getRandomTimeout() int {
 	rand.Seed(time.Now().UnixNano())
-	return rand.Intn(ElectionTimeout) + ElectionTimeout
+	return rand.Intn(ElectionTimeoutEnd-ElectionTimeoutStart) + ElectionTimeoutStart
 }
 
 func (rf *Raft) isLeader() bool {

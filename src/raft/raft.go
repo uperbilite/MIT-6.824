@@ -124,9 +124,12 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		return -1, -1, false
 	}
 
+	index := rf.getLastLogIndex() + 1
+	term := rf.currentTerm
+
 	rf.log = append(rf.log, Entry{
-		Index:   rf.getLastLogIndex() + 1,
-		Term:    rf.currentTerm,
+		Index:   index,
+		Term:    term,
 		Command: command,
 	})
 	rf.persist()
@@ -134,7 +137,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	DebugCommand(rf.me, rf.currentTerm, rf.log)
 	rf.sendHeartbeat(rf.currentTerm)
 
-	return rf.getLastLogIndex(), rf.currentTerm, true
+	return index, term, true
 }
 
 //

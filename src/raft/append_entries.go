@@ -57,12 +57,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Term, reply.Success = biggerTerm, false
 		if args.PrevLogIndex > rf.getLastLogIndex() {
 			reply.XTerm = -1
-			reply.XLen = args.PrevLogIndex - rf.getLastLogIndex()
+			reply.XLen = len(rf.log)
 			return
 		}
-		firstIndex := rf.getFirstLogIndex()
-		reply.XTerm = rf.log[args.PrevLogIndex-firstIndex].Term
-		reply.XIndex = rf.getFirstLogIndexOfTerm(rf.getLastLogTerm())
+		reply.XTerm = rf.log[args.PrevLogIndex].Term
+		reply.XIndex = rf.getFirstLogIndexOfTerm(reply.XTerm)
 		return
 	}
 	// not heartbeat, delete conflict log and append entries

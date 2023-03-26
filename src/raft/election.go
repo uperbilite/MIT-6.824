@@ -70,6 +70,10 @@ func (rf *Raft) startElection(term int) {
 				if votes > len(rf.peers)/2 {
 					DebugToLeader(rf, rf.currentTerm)
 					rf.state = Leader
+					for i := range rf.peers {
+						rf.nextIndex[i] = rf.getLastLogIndex() + 1
+						rf.matchIndex[i] = 0
+					}
 					DebugHB(rf.me, rf.currentTerm)
 					rf.sendHeartbeat(rf.currentTerm)
 				}

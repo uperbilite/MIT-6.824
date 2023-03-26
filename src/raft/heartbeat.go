@@ -70,7 +70,7 @@ func (rf *Raft) sendHeartbeat(term int) {
 						rf.nextIndex[server] = reply.XIndex
 					}
 				} else {
-					rf.nextIndex[server] = rf.getLastLogIndex() - reply.XLen
+					rf.nextIndex[server] = reply.XLen
 				}
 				if rf.nextIndex[server] < 1 {
 					rf.nextIndex[server] = 1

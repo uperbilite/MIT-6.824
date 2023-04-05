@@ -41,6 +41,7 @@ func (rf *Raft) sendHeartbeat(term int) {
 			rf.mu.Unlock()
 
 			DebugSendingAppendEntries(rf, server, &args)
+			// TODO: send install snapshot if rf.nextIndex[server]-1 < rf.lastSnapShotIndex
 			if ok := rf.sendAppendEntries(server, &args, &reply); !ok {
 				return
 			}
@@ -63,14 +64,11 @@ func (rf *Raft) sendHeartbeat(term int) {
 				rf.nextIndex[server] = rf.matchIndex[server] + 1
 				DebugCommitSuccess(rf.me, server, term, rf.matchIndex[server], rf.nextIndex[server])
 			} else {
-				if reply.XTerm != -1 {
-					if rf.hasLogOfTerm(reply.XTerm) {
-						rf.nextIndex[server] = rf.getLastLogIndexOfTerm(reply.XTerm) + 1
-					} else {
-						rf.nextIndex[server] = reply.XIndex
-					}
+				// fast backup
+				if reply.ConflictTerm != -1 && rf.hasLogOfTerm(reply.ConflictTerm) {
+					rf.nextIndex[server] = rf.getLastLogIndexOfTerm(reply.ConflictTerm) + 1
 				} else {
-					rf.nextIndex[server] = reply.XLen
+					rf.nextIndex[server] = reply.ConflictIndex
 				}
 				if rf.nextIndex[server] < 1 {
 					rf.nextIndex[server] = 1

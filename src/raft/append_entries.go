@@ -12,11 +12,10 @@ type AppendEntriesArgs struct {
 }
 
 type AppendEntriesReply struct {
-	Term    int
-	Success bool
-	XTerm   int
-	XIndex  int
-	XLen    int
+	Term          int
+	Success       bool
+	ConflictTerm  int
+	ConflictIndex int
 }
 
 func (rf *Raft) hasPrevLog(prevLogIndex, prevLogTerm int) bool {
@@ -56,12 +55,12 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	if !rf.hasPrevLog(args.PrevLogIndex, args.PrevLogTerm) {
 		reply.Term, reply.Success = biggerTerm, false
 		if args.PrevLogIndex > rf.getLastLogIndex() {
-			reply.XTerm = -1
-			reply.XLen = len(rf.log)
+			reply.ConflictTerm = -1
+			reply.ConflictIndex = rf.getLastLogIndex() + 1
 			return
 		}
-		reply.XTerm = rf.log[args.PrevLogIndex].Term
-		reply.XIndex = rf.getFirstLogIndexOfTerm(reply.XTerm)
+		reply.ConflictTerm = rf.log[args.PrevLogIndex].Term
+		reply.ConflictIndex = rf.getFirstLogIndexOfTerm(reply.ConflictTerm)
 		return
 	}
 	// not heartbeat, delete conflict log and append entries
